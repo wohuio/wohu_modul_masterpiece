@@ -573,8 +573,7 @@ export default {
       // Dragging
       draggingNode: null,
       dragOffset: { x: 0, y: 0 },
-      animationFrameId: null,
-      pendingMouseMove: null,
+      cachedContainerRect: null,
 
       // Connecting
       connectingFrom: null,
@@ -650,9 +649,6 @@ export default {
     document.removeEventListener('mouseover', this.onNodeHover);
     if (this.autoSaveTimeout) {
       clearTimeout(this.autoSaveTimeout);
-    }
-    if (this.animationFrameId) {
-      cancelAnimationFrame(this.animationFrameId);
     }
   },
   methods: {
@@ -860,7 +856,9 @@ export default {
 
       const nodeEl = e.currentTarget;
       const rect = nodeEl.getBoundingClientRect();
-      const containerRect = this.$refs.container.getBoundingClientRect();
+
+      // Cache container rect for performance
+      this.cachedContainerRect = this.$refs.container.getBoundingClientRect();
 
       this.dragOffset = {
         x: (e.clientX - rect.left) / this.viewport.zoom,
@@ -872,35 +870,19 @@ export default {
     },
 
     onNodeMouseMove(e) {
-      if (!this.draggingNode) return;
+      if (!this.draggingNode || !this.cachedContainerRect) return;
 
-      // Store mouse event for RAF processing
-      this.pendingMouseMove = e;
+      // Use cached rect for performance
+      const x = (e.clientX - this.cachedContainerRect.left - this.viewport.x) / this.viewport.zoom - this.dragOffset.x;
+      const y = (e.clientY - this.cachedContainerRect.top - this.viewport.y) / this.viewport.zoom - this.dragOffset.y;
 
-      // Schedule update with requestAnimationFrame if not already scheduled
-      if (!this.animationFrameId) {
-        this.animationFrameId = requestAnimationFrame(() => {
-          if (this.pendingMouseMove && this.draggingNode) {
-            const containerRect = this.$refs.container.getBoundingClientRect();
-            const x = (this.pendingMouseMove.clientX - containerRect.left - this.viewport.x) / this.viewport.zoom - this.dragOffset.x;
-            const y = (this.pendingMouseMove.clientY - containerRect.top - this.viewport.y) / this.viewport.zoom - this.dragOffset.y;
-
-            this.draggingNode.position.x = x;
-            this.draggingNode.position.y = y;
-          }
-          this.animationFrameId = null;
-          this.pendingMouseMove = null;
-        });
-      }
+      this.draggingNode.position.x = x;
+      this.draggingNode.position.y = y;
     },
 
     onNodeMouseUp() {
       this.draggingNode = null;
-      this.pendingMouseMove = null;
-      if (this.animationFrameId) {
-        cancelAnimationFrame(this.animationFrameId);
-        this.animationFrameId = null;
-      }
+      this.cachedContainerRect = null;
       document.removeEventListener('mousemove', this.onNodeMouseMove);
       document.removeEventListener('mouseup', this.onNodeMouseUp);
     },
@@ -1092,8 +1074,8 @@ export default {
       const angle = Math.atan2(dy_dt, dx_dt);
 
       // Arrow size (increased for better visibility)
-      const arrowSize = 14;
-      const arrowWidth = 10;
+      const arrowSize = 32;
+      const arrowWidth = 20;
 
       // Calculate arrow points
       const tipX = midX;
