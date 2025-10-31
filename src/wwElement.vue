@@ -79,8 +79,33 @@
 
           <div class="node-body">
             <div class="node-field">
-              <label>Type</label>
-              <div class="node-type-badge">{{ node.data.calculationType || 'fixed' }}</div>
+              <label>Calculation Type</label>
+              <select
+                v-model="node.data.calculationType"
+                @change="onNodeDataChange(node)"
+                @click.stop
+                class="node-select"
+              >
+                <option value="fixed">Fixed Value</option>
+                <option value="percentage">Percentage</option>
+                <option value="multiply">Multiply</option>
+                <option value="add">Add</option>
+                <option value="subtract">Subtract</option>
+                <option value="formula">Custom Formula</option>
+              </select>
+            </div>
+
+            <div v-if="node.data.calculationType === 'formula'" class="node-field">
+              <label>Formula (use: input, value)</label>
+              <input
+                type="text"
+                v-model="node.data.formula"
+                @input="onNodeDataChange(node)"
+                @click.stop
+                placeholder="input * value + 10"
+                class="node-input node-formula"
+              />
+              <div class="formula-hint">Examples: input + value, input * 2, (input + value) / 2</div>
             </div>
 
             <div class="node-field">
@@ -373,6 +398,7 @@ export default {
             value: apiNode.value !== undefined ? apiNode.value : (nodeType?.defaultValue || 0),
             result: apiNode.value !== undefined ? apiNode.value : (nodeType?.defaultValue || 0),
             calculationType: nodeType?.calculationType || 'fixed',
+            formula: nodeType?.formula || 'input + value',
             description: nodeType?.description || '',
             minValue: nodeType?.minValue,
             maxValue: nodeType?.maxValue,
@@ -453,6 +479,7 @@ export default {
           value: nodeType.defaultValue || 0,
           result: nodeType.defaultValue || 0,
           calculationType: nodeType.calculationType || 'fixed',
+          formula: nodeType.formula || 'input + value',
           description: nodeType.description || '',
           minValue: nodeType.minValue,
           maxValue: nodeType.maxValue,
@@ -771,6 +798,23 @@ export default {
           case 'subtract':
             result = inputValue - value;
             break;
+          case 'formula':
+            try {
+              // Safe formula evaluation
+              const input = inputValue;
+              // Use Function constructor for safe evaluation
+              const formulaFunc = new Function('input', 'value', `return ${node.data.formula || 'input'}`);
+              result = formulaFunc(input, value);
+              // Check if result is valid number
+              if (isNaN(result) || !isFinite(result)) {
+                result = 0;
+                console.error('Formula returned invalid result:', node.data.formula);
+              }
+            } catch (error) {
+              console.error('Formula error:', error.message, 'Formula:', node.data.formula);
+              result = 0;
+            }
+            break;
         }
 
         node.data.result = result;
@@ -924,13 +968,15 @@ export default {
     margin-bottom: 6px;
   }
 
-  .node-input {
+  .node-input,
+  .node-select {
     width: 100%;
     padding: 8px 12px;
     border: 2px solid #e5e7eb;
     border-radius: 6px;
     font-size: 14px;
     transition: all 0.2s;
+    background: white;
 
     &:focus {
       outline: none;
@@ -938,6 +984,27 @@ export default {
       box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
     }
   }
+
+  .node-select {
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 36px;
+  }
+
+  .node-formula {
+    font-family: 'Monaco', 'Courier New', monospace;
+    font-size: 12px;
+  }
+}
+
+.formula-hint {
+  margin-top: 4px;
+  font-size: 10px;
+  color: #9ca3af;
+  font-style: italic;
 }
 
 .node-type-badge {
