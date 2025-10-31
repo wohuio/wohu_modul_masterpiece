@@ -302,6 +302,7 @@
                 <option value="add">Add</option>
                 <option value="subtract">Subtract</option>
                 <option value="formula">Custom Formula</option>
+                <option value="advanced">Advanced Multi-Step</option>
               </select>
             </div>
 
@@ -314,6 +315,122 @@
                 class="popup-textarea"
                 rows="3"
               ></textarea>
+            </div>
+
+            <!-- Advanced Multi-Step Calculation Builder -->
+            <div v-if="popupNode.data.calculationType === 'advanced'" class="advanced-calc-builder">
+              <div class="builder-header">
+                <label>Calculation Steps</label>
+                <button @click="addCalculationStep" class="btn-add-step">+ Add Step</button>
+              </div>
+
+              <div v-if="!popupNode.data.calculationSteps || popupNode.data.calculationSteps.length === 0" class="empty-steps">
+                No calculation steps defined. Click "Add Step" to create your first step.
+              </div>
+
+              <div v-for="(step, index) in popupNode.data.calculationSteps" :key="index" class="calc-step">
+                <div class="step-header">
+                  <span class="step-number">Step {{ index + 1 }}</span>
+                  <button @click="removeCalculationStep(index)" class="btn-remove-step">×</button>
+                </div>
+
+                <div class="step-body">
+                  <div class="popup-field">
+                    <label>Step Type</label>
+                    <select v-model="step.type" @change="onPopupChange" class="popup-select">
+                      <option value="formula">Formula</option>
+                      <option value="condition">If/Else Condition</option>
+                      <option value="aggregate">Aggregate Function</option>
+                      <option value="variable">Set Variable</option>
+                    </select>
+                  </div>
+
+                  <div class="popup-field">
+                    <label>Variable Name (optional, stores result)</label>
+                    <input
+                      type="text"
+                      v-model="step.name"
+                      @input="onPopupChange"
+                      placeholder="e.g., tax, discount, total"
+                      class="popup-input"
+                    />
+                  </div>
+
+                  <!-- Formula Step -->
+                  <div v-if="step.type === 'formula' || step.type === 'variable'" class="popup-field">
+                    <label>Formula</label>
+                    <textarea
+                      v-model="step.formula"
+                      @input="onPopupChange"
+                      placeholder="e.g., input * 1.19, sqrt(value), round(result * 100) / 100"
+                      class="popup-textarea"
+                      rows="2"
+                    ></textarea>
+                    <div class="formula-hint">
+                      Available: input, value, result, variables, abs, ceil, floor, round, sqrt, pow, min, max, sin, cos, tan, log, exp
+                    </div>
+                  </div>
+
+                  <!-- Condition Step -->
+                  <div v-if="step.type === 'condition'">
+                    <div class="popup-field">
+                      <label>Condition (JavaScript expression)</label>
+                      <input
+                        type="text"
+                        v-model="step.condition"
+                        @input="onPopupChange"
+                        placeholder="e.g., input > 1000, value >= 0, result < max(inputs)"
+                        class="popup-input"
+                      />
+                    </div>
+                    <div class="popup-field-group">
+                      <div class="popup-field">
+                        <label>If True</label>
+                        <input
+                          type="text"
+                          v-model="step.trueValue"
+                          @input="onPopupChange"
+                          placeholder="e.g., input * 0.9"
+                          class="popup-input"
+                        />
+                      </div>
+                      <div class="popup-field">
+                        <label>If False</label>
+                        <input
+                          type="text"
+                          v-model="step.falseValue"
+                          @input="onPopupChange"
+                          placeholder="e.g., input"
+                          class="popup-input"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Aggregate Step -->
+                  <div v-if="step.type === 'aggregate'" class="popup-field">
+                    <label>Aggregate Type</label>
+                    <select v-model="step.aggregateType" @change="onPopupChange" class="popup-select">
+                      <option value="sum">Sum of all inputs</option>
+                      <option value="avg">Average of inputs</option>
+                      <option value="min">Minimum value</option>
+                      <option value="max">Maximum value</option>
+                      <option value="count">Count of inputs</option>
+                    </select>
+                  </div>
+
+                  <div class="popup-field">
+                    <label>Description</label>
+                    <input
+                      type="text"
+                      v-model="step.description"
+                      @input="onPopupChange"
+                      placeholder="Explain what this step does"
+                      class="popup-input"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div class="popup-field">
@@ -547,6 +664,7 @@ export default {
             result: apiNode.value !== undefined ? apiNode.value : (nodeType?.defaultValue || 0),
             calculationType: nodeType?.calculationType || 'fixed',
             formula: nodeType?.formula || 'input + value',
+            calculationSteps: nodeType?.calculationSteps || [],
             description: nodeType?.description || '',
             notes: nodeType?.notes || '',
             minValue: nodeType?.minValue,
@@ -631,6 +749,7 @@ export default {
           result: nodeType.defaultValue || 0,
           calculationType: nodeType.calculationType || 'fixed',
           formula: nodeType.formula || 'input + value',
+          calculationSteps: nodeType.calculationSteps || [],
           description: nodeType.description || '',
           notes: nodeType.notes || '',
           minValue: nodeType.minValue,
@@ -969,10 +1088,139 @@ export default {
               result = 0;
             }
             break;
+          case 'advanced':
+            result = this.executeAdvancedCalculation(node, inputValue, value, inputs);
+            break;
         }
 
         node.data.result = result;
       });
+    },
+
+    // === ADVANCED CALCULATIONS ===
+    executeAdvancedCalculation(node, inputValue, value, inputs) {
+      try {
+        const steps = node.data.calculationSteps || [];
+        if (steps.length === 0) return inputValue;
+
+        // Context with all available variables and functions
+        const context = {
+          input: inputValue,
+          value: value,
+          result: inputValue,
+          // Math functions
+          abs: Math.abs,
+          ceil: Math.ceil,
+          floor: Math.floor,
+          round: Math.round,
+          sqrt: Math.sqrt,
+          pow: Math.pow,
+          min: Math.min,
+          max: Math.max,
+          // Advanced math
+          sin: Math.sin,
+          cos: Math.cos,
+          tan: Math.tan,
+          log: Math.log,
+          exp: Math.exp,
+          // Input array for aggregate functions
+          inputs: inputs.map(fromId => {
+            const fromNode = this.nodes.find(n => n.id === fromId);
+            return fromNode?.data?.result || 0;
+          }),
+        };
+
+        // Execute each step
+        for (const step of steps) {
+          try {
+            switch (step.type) {
+              case 'formula':
+                // Execute formula and store in variable or result
+                const formula = step.formula || 'result';
+                const formulaFunc = new Function(...Object.keys(context), `return ${formula}`);
+                const formulaResult = formulaFunc(...Object.values(context));
+
+                if (step.name) {
+                  context[step.name] = formulaResult;
+                } else {
+                  context.result = formulaResult;
+                }
+                break;
+
+              case 'variable':
+                // Set a variable
+                const varFormula = step.formula || '0';
+                const varFunc = new Function(...Object.keys(context), `return ${varFormula}`);
+                const varValue = varFunc(...Object.values(context));
+                context[step.name || 'temp'] = varValue;
+                break;
+
+              case 'condition':
+                // If/Else condition
+                const condition = step.condition || 'true';
+                const condFunc = new Function(...Object.keys(context), `return ${condition}`);
+                const condResult = condFunc(...Object.values(context));
+
+                const valueToUse = condResult ? (step.trueValue || 'result') : (step.falseValue || 'result');
+                const condValueFunc = new Function(...Object.keys(context), `return ${valueToUse}`);
+                const condValue = condValueFunc(...Object.values(context));
+
+                if (step.name) {
+                  context[step.name] = condValue;
+                } else {
+                  context.result = condValue;
+                }
+                break;
+
+              case 'aggregate':
+                // Aggregate function on inputs
+                const aggType = step.aggregateType || 'sum';
+                let aggResult = 0;
+
+                switch (aggType) {
+                  case 'sum':
+                    aggResult = context.inputs.reduce((sum, val) => sum + val, 0);
+                    break;
+                  case 'avg':
+                    aggResult = context.inputs.length > 0
+                      ? context.inputs.reduce((sum, val) => sum + val, 0) / context.inputs.length
+                      : 0;
+                    break;
+                  case 'min':
+                    aggResult = context.inputs.length > 0 ? Math.min(...context.inputs) : 0;
+                    break;
+                  case 'max':
+                    aggResult = context.inputs.length > 0 ? Math.max(...context.inputs) : 0;
+                    break;
+                  case 'count':
+                    aggResult = context.inputs.length;
+                    break;
+                }
+
+                if (step.name) {
+                  context[step.name] = aggResult;
+                } else {
+                  context.result = aggResult;
+                }
+                break;
+            }
+          } catch (stepError) {
+            console.error(`Step error in "${step.name || step.type}":`, stepError.message);
+          }
+        }
+
+        // Validate final result
+        const finalResult = context.result;
+        if (isNaN(finalResult) || !isFinite(finalResult)) {
+          console.error('Advanced calculation returned invalid result');
+          return 0;
+        }
+
+        return finalResult;
+      } catch (error) {
+        console.error('Advanced calculation error:', error.message);
+        return 0;
+      }
     },
 
     formatValue(val) {
@@ -991,6 +1239,28 @@ export default {
     onPopupChange() {
       this.calculate();
       this.emitFlowData();
+    },
+
+    // === ADVANCED CALCULATION BUILDER ===
+    addCalculationStep() {
+      if (!this.popupNode.data.calculationSteps) {
+        this.popupNode.data.calculationSteps = [];
+      }
+      this.popupNode.data.calculationSteps.push({
+        type: 'formula',
+        name: '',
+        formula: '',
+        condition: '',
+        trueValue: '',
+        falseValue: '',
+        aggregateType: 'sum',
+        description: '',
+      });
+    },
+
+    removeCalculationStep(index) {
+      this.popupNode.data.calculationSteps.splice(index, 1);
+      this.onPopupChange();
     },
   },
 };
@@ -1653,6 +1923,111 @@ export default {
 
   &:active {
     transform: translateY(0);
+  }
+}
+
+// === ADVANCED CALCULATION BUILDER ===
+.advanced-calc-builder {
+  margin-top: 12px;
+  background: #f9fafb;
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+}
+
+.builder-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+
+  label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #374151;
+  }
+}
+
+.btn-add-step {
+  padding: 6px 12px;
+  background: #10b981;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    background: #059669;
+    transform: translateY(-1px);
+  }
+}
+
+.empty-steps {
+  text-align: center;
+  padding: 24px;
+  color: #9ca3af;
+  font-size: 13px;
+  font-style: italic;
+}
+
+.calc-step {
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  margin-bottom: 12px;
+  overflow: hidden;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.step-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: white;
+
+  .step-number {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+}
+
+.btn-remove-step {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  font-size: 20px;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
+}
+
+.step-body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+
+  .popup-field {
+    margin-bottom: 0;
   }
 }
 </style>

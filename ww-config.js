@@ -30,9 +30,57 @@ export default {
                     { value: "add", label: "Add" },
                     { value: "subtract", label: "Subtract" },
                     { value: "formula", label: "Custom Formula" },
+                    { value: "advanced", label: "Advanced Multi-Step" },
                   ],
                 },
                 defaultValue: "fixed",
+              },
+              calculationSteps: {
+                type: "Array",
+                label: { en: "Calculation Steps (Advanced Mode)" },
+                options: {
+                  item: {
+                    type: "Object",
+                    options: {
+                      item: {
+                        type: {
+                          type: "TextSelect",
+                          label: { en: "Step Type" },
+                          options: {
+                            choices: [
+                              { value: "formula", label: "Formula" },
+                              { value: "condition", label: "If/Else Condition" },
+                              { value: "aggregate", label: "Aggregate Function" },
+                              { value: "variable", label: "Set Variable" },
+                            ],
+                          },
+                          defaultValue: "formula",
+                        },
+                        name: { type: "Text", label: { en: "Step Name / Variable" }, defaultValue: "" },
+                        formula: { type: "Text", label: { en: "Formula / Expression" }, defaultValue: "" },
+                        condition: { type: "Text", label: { en: "Condition (for if/else)" }, defaultValue: "" },
+                        trueValue: { type: "Text", label: { en: "True Value" }, defaultValue: "" },
+                        falseValue: { type: "Text", label: { en: "False Value" }, defaultValue: "" },
+                        aggregateType: {
+                          type: "TextSelect",
+                          label: { en: "Aggregate Type" },
+                          options: {
+                            choices: [
+                              { value: "sum", label: "Sum" },
+                              { value: "avg", label: "Average" },
+                              { value: "min", label: "Minimum" },
+                              { value: "max", label: "Maximum" },
+                              { value: "count", label: "Count" },
+                            ],
+                          },
+                          defaultValue: "sum",
+                        },
+                        description: { type: "Text", label: { en: "Description" }, defaultValue: "" },
+                      },
+                    },
+                  },
+                },
+                defaultValue: [],
               },
               formula: {
                 type: "Text",
