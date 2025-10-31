@@ -53,18 +53,29 @@
       <g :transform="`translate(${viewport.x}, ${viewport.y}) scale(${viewport.zoom})`">
         <!-- Edges -->
         <g class="edges-layer">
-          <path
-            v-for="edge in edges"
-            :key="`${edge.source}-${edge.target}`"
-            :d="getEdgePath(edge)"
-            :stroke="content.connectionColor || '#b1b1b7'"
-            :stroke-width="content.connectionWidth || 2"
-            fill="none"
-            class="react-flow-edge"
-            marker-end="url(#arrowhead)"
-            @click="onEdgeClick(edge)"
-            style="cursor: pointer;"
-          />
+          <g v-for="edge in edges" :key="`${edge.source}-${edge.target}`">
+            <!-- First half (source to midpoint) -->
+            <path
+              :d="getEdgePath(edge)"
+              :stroke="content.connectionColor || '#b1b1b7'"
+              :stroke-width="content.connectionWidth || 2"
+              fill="none"
+              class="react-flow-edge"
+              @click="onEdgeClick(edge)"
+              style="cursor: pointer;"
+            />
+            <!-- Second half (midpoint to target) with arrow -->
+            <path
+              :d="getEdgePathSecondHalf(edge)"
+              :stroke="content.connectionColor || '#b1b1b7'"
+              :stroke-width="content.connectionWidth || 2"
+              fill="none"
+              class="react-flow-edge"
+              marker-end="url(#arrowhead)"
+              @click="onEdgeClick(edge)"
+              style="cursor: pointer;"
+            />
+          </g>
           <!-- Temporary connection line while dragging -->
           <path
             v-if="connectingFrom && tempConnectionPos"
@@ -1026,7 +1037,48 @@ export default {
       const dy = targetY - sourceY;
       const offset = Math.abs(dx) * 0.5;
 
-      return `M ${sourceX} ${sourceY} C ${sourceX + offset} ${sourceY}, ${targetX - offset} ${targetY}, ${targetX} ${targetY}`;
+      // Calculate midpoint for arrow placement (t=0.5 on cubic bezier)
+      const cp1x = sourceX + offset;
+      const cp1y = sourceY;
+      const cp2x = targetX - offset;
+      const cp2y = targetY;
+
+      // Cubic bezier at t=0.5
+      const t = 0.5;
+      const midX = Math.pow(1-t, 3) * sourceX + 3 * Math.pow(1-t, 2) * t * cp1x + 3 * (1-t) * Math.pow(t, 2) * cp2x + Math.pow(t, 3) * targetX;
+      const midY = Math.pow(1-t, 3) * sourceY + 3 * Math.pow(1-t, 2) * t * cp1y + 3 * (1-t) * Math.pow(t, 2) * cp2y + Math.pow(t, 3) * targetY;
+
+      // Split path at midpoint
+      return `M ${sourceX} ${sourceY} C ${sourceX + offset} ${sourceY}, ${targetX - offset} ${targetY}, ${midX} ${midY}`;
+    },
+
+    getEdgePathSecondHalf(edge) {
+      const sourceNode = this.nodes.find(n => n.id === edge.source);
+      const targetNode = this.nodes.find(n => n.id === edge.target);
+
+      if (!sourceNode || !targetNode) return '';
+
+      const nodeWidth = this.content.nodeWidth || 280;
+      const sourceX = sourceNode.position.x + nodeWidth;
+      const sourceY = sourceNode.position.y + 70;
+      const targetX = targetNode.position.x;
+      const targetY = targetNode.position.y + 70;
+
+      const dx = targetX - sourceX;
+      const offset = Math.abs(dx) * 0.5;
+
+      // Calculate midpoint
+      const cp1x = sourceX + offset;
+      const cp1y = sourceY;
+      const cp2x = targetX - offset;
+      const cp2y = targetY;
+
+      const t = 0.5;
+      const midX = Math.pow(1-t, 3) * sourceX + 3 * Math.pow(1-t, 2) * t * cp1x + 3 * (1-t) * Math.pow(t, 2) * cp2x + Math.pow(t, 3) * targetX;
+      const midY = Math.pow(1-t, 3) * sourceY + 3 * Math.pow(1-t, 2) * t * cp1y + 3 * (1-t) * Math.pow(t, 2) * cp2y + Math.pow(t, 3) * targetY;
+
+      // Second half from midpoint to target
+      return `M ${midX} ${midY} C ${targetX - offset} ${targetY}, ${targetX - offset} ${targetY}, ${targetX} ${targetY}`;
     },
 
     getTempConnectionPath() {
