@@ -1,0 +1,12 @@
+{
+  "name": "weweb-flow-canvas",
+  "version": "1.0.0",
+  "description": "WeWeb Custom Element - Flow-based Calculation Canvas",
+  "scripts": {
+    "serve": "weweb serve",
+    "build": "weweb build"
+  },
+  "devDependencies": {
+    "@weweb/cli": "latest"
+  }
+}
