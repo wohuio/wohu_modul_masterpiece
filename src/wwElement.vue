@@ -24,6 +24,32 @@
       @mouseup="onPaneMouseUp"
       @wheel="onPaneWheel"
     >
+      <!-- Define arrow markers -->
+      <defs>
+        <marker
+          id="arrowhead"
+          markerWidth="10"
+          markerHeight="10"
+          refX="9"
+          refY="3"
+          orient="auto"
+          markerUnits="strokeWidth"
+        >
+          <path d="M0,0 L0,6 L9,3 z" :fill="content.connectionColor || '#b1b1b7'" />
+        </marker>
+        <marker
+          id="arrowhead-hover"
+          markerWidth="10"
+          markerHeight="10"
+          refX="9"
+          refY="3"
+          orient="auto"
+          markerUnits="strokeWidth"
+        >
+          <path d="M0,0 L0,6 L9,3 z" :fill="content.connectionHoverColor || '#2563eb'" />
+        </marker>
+      </defs>
+
       <g :transform="`translate(${viewport.x}, ${viewport.y}) scale(${viewport.zoom})`">
         <!-- Edges -->
         <g class="edges-layer">
@@ -35,6 +61,9 @@
             :stroke-width="content.connectionWidth || 2"
             fill="none"
             class="react-flow-edge"
+            marker-end="url(#arrowhead)"
+            @click="onEdgeClick(edge)"
+            style="cursor: pointer;"
           />
           <!-- Temporary connection line while dragging -->
           <path
@@ -45,6 +74,7 @@
             stroke-dasharray="5,5"
             fill="none"
             class="react-flow-edge-temp"
+            marker-end="url(#arrowhead)"
           />
         </g>
       </g>
@@ -1015,6 +1045,28 @@ export default {
       const offset = Math.abs(dx) * 0.5;
 
       return `M ${sourceX} ${sourceY} C ${sourceX + offset} ${sourceY}, ${targetX - offset} ${targetY}, ${targetX} ${targetY}`;
+    },
+
+    // === EDGE DELETION ===
+    onEdgeClick(edge) {
+      if (!this.content.enableEdgeDeletion) return;
+      if (this.isLocked) return;
+
+      const confirmed = confirm('Delete this connection?');
+      if (confirmed) {
+        this.deleteEdge(edge);
+      }
+    },
+
+    deleteEdge(edge) {
+      const index = this.edges.findIndex(
+        e => e.source === edge.source && e.target === edge.target
+      );
+      if (index !== -1) {
+        this.edges.splice(index, 1);
+        this.calculate();
+        this.emitFlowData();
+      }
     },
 
     // === CALCULATION ===
