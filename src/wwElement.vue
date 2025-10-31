@@ -230,7 +230,7 @@
         <g
           v-for="node in nodes"
           :key="`mini-${node.id}`"
-          :transform="`translate(${(node.position.x * 200) / (canvasWidth || 1200)}, ${(node.position.y * 150) / (canvasHeight || 800)})`"
+          :transform="`translate(${((node.position.x - minimapBounds.minX) * 200) / (minimapBounds.maxX - minimapBounds.minX)}, ${((node.position.y - minimapBounds.minY) * 150) / (minimapBounds.maxY - minimapBounds.minY)})`"
         >
           <rect
             width="15"
@@ -241,8 +241,8 @@
         </g>
         <!-- Viewport indicator -->
         <rect
-          :x="(-viewport.x * 200) / ((canvasWidth || 1200) * viewport.zoom)"
-          :y="(-viewport.y * 150) / ((canvasHeight || 800) * viewport.zoom)"
+          :x="((-viewport.x - minimapBounds.minX) * 200) / ((minimapBounds.maxX - minimapBounds.minX) * viewport.zoom)"
+          :y="((-viewport.y - minimapBounds.minY) * 150) / ((minimapBounds.maxY - minimapBounds.minY) * viewport.zoom)"
           :width="(200 / viewport.zoom)"
           :height="(150 / viewport.zoom)"
           fill="none"
@@ -622,6 +622,34 @@ export default {
         '--node-radius': `${this.content.nodeBorderRadius || 12}px`,
         '--node-shadow': shadows[shadow],
         '--connection-hover': this.content.connectionHoverColor || '#2563eb',
+      };
+    },
+    minimapBounds() {
+      if (this.nodes.length === 0) {
+        return { minX: 0, minY: 0, maxX: 1200, maxY: 800 };
+      }
+
+      const nodeWidth = this.content.nodeWidth || 280;
+      const nodeHeight = 200;
+      const padding = 100;
+
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+
+      this.nodes.forEach(node => {
+        minX = Math.min(minX, node.position.x);
+        minY = Math.min(minY, node.position.y);
+        maxX = Math.max(maxX, node.position.x + nodeWidth);
+        maxY = Math.max(maxY, node.position.y + nodeHeight);
+      });
+
+      return {
+        minX: Math.max(0, minX - padding),
+        minY: Math.max(0, minY - padding),
+        maxX: maxX + padding,
+        maxY: maxY + padding,
       };
     },
   },
