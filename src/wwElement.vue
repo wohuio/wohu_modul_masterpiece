@@ -45,7 +45,8 @@
       class="react-flow-nodes"
       :style="{
         transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
-        transformOrigin: '0 0'
+        transformOrigin: '0 0',
+        ...nodeStyle
       }"
     >
       <div
@@ -108,7 +109,7 @@
     </div>
 
     <!-- Controls -->
-    <div class="react-flow-controls">
+    <div v-if="content.showControls !== false" class="react-flow-controls">
       <button @click="zoomIn" class="control-btn" title="Zoom In">
         <svg viewBox="0 0 24 24" width="16" height="16">
           <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="currentColor"/>
@@ -135,7 +136,7 @@
     </div>
 
     <!-- Mini Map -->
-    <div v-if="content.showMiniMap" class="react-flow-minimap">
+    <div v-if="content.showMiniMap !== false" class="react-flow-minimap">
       <svg viewBox="0 0 200 150" class="minimap-svg">
         <rect width="200" height="150" fill="#f8f9fa" />
         <g
@@ -242,7 +243,7 @@ export default {
     },
     backgroundStyle() {
       return {
-        backgroundColor: this.content.canvasBackgroundColor || '#ffffff',
+        backgroundColor: this.content.canvasBackgroundColor || '#fafafa',
       };
     },
     edgesStyle() {
@@ -250,14 +251,49 @@ export default {
         pointerEvents: this.isLocked ? 'none' : 'all',
       };
     },
+    nodeStyle() {
+      const shadow = this.content.nodeShadow || 'md';
+      const shadows = {
+        none: 'none',
+        sm: '0 1px 3px rgba(0, 0, 0, 0.08)',
+        md: '0 4px 12px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05)',
+        lg: '0 10px 30px rgba(0, 0, 0, 0.12), 0 4px 8px rgba(0, 0, 0, 0.06)',
+        xl: '0 20px 40px rgba(0, 0, 0, 0.15), 0 8px 16px rgba(0, 0, 0, 0.08)',
+      };
+      return {
+        '--node-width': `${this.content.nodeWidth || 280}px`,
+        '--node-bg': this.content.nodeBackgroundColor || '#ffffff',
+        '--node-border': this.content.nodeBorderColor || '#e5e7eb',
+        '--node-radius': `${this.content.nodeBorderRadius || 12}px`,
+        '--node-shadow': shadows[shadow],
+        '--connection-hover': this.content.connectionHoverColor || '#2563eb',
+      };
+    },
+  },
+  watch: {
+    'content.initialNodes': {
+      handler(newNodes) {
+        if (newNodes && newNodes.length > 0) {
+          this.loadNodesFromAPI(newNodes);
+        }
+      },
+      deep: true,
+      immediate: true,
+    },
+    'content.initialEdges': {
+      handler(newEdges) {
+        if (newEdges && newEdges.length > 0) {
+          this.loadEdgesFromAPI(newEdges);
+        }
+      },
+      deep: true,
+      immediate: true,
+    },
   },
   mounted() {
     this.$nextTick(() => {
       this.initCanvas();
-      // Add some default nodes for demo
-      if (this.nodes.length === 0 && this.nodeTypes.length > 0) {
-        this.addNode(this.nodeTypes[0], 100, 100);
-      }
+      this.loadInitialData();
     });
 
     // Node hover tracking
@@ -265,8 +301,12 @@ export default {
   },
   beforeUnmount() {
     document.removeEventListener('mouseover', this.onNodeHover);
+    if (this.autoSaveTimeout) {
+      clearTimeout(this.autoSaveTimeout);
+    }
   },
   methods: {
+    // === INITIALIZATION ===
     initCanvas() {
       // Initialize with default viewport
       this.viewport = {
@@ -274,6 +314,99 @@ export default {
         y: 50,
         zoom: 1,
       };
+    },
+
+    loadInitialData() {
+      // Load from API if provided
+      if (this.content.initialNodes && this.content.initialNodes.length > 0) {
+        this.loadNodesFromAPI(this.content.initialNodes);
+      } else if (this.nodes.length === 0 && this.nodeTypes.length > 0) {
+        // Add demo node
+        this.addNode(this.nodeTypes[0], 100, 100);
+      }
+
+      if (this.content.initialEdges && this.content.initialEdges.length > 0) {
+        this.loadEdgesFromAPI(this.content.initialEdges);
+      }
+    },
+
+    // === API INPUT ===
+    loadNodesFromAPI(apiNodes) {
+      this.nodes = apiNodes.map((apiNode, index) => {
+        const nodeType = this.nodeTypes.find(t => t.id === apiNode.typeId) || this.nodeTypes[0];
+        return {
+          id: apiNode.id || `node-${this.nextNodeId++}`,
+          type: apiNode.typeId || nodeType?.id,
+          label: nodeType?.label || 'Node',
+          icon: nodeType?.icon || '📊',
+          color: nodeType?.color || '#3b82f6',
+          position: {
+            x: apiNode.x || 100 + index * 100,
+            y: apiNode.y || 100 + index * 50,
+          },
+          data: {
+            value: apiNode.value !== undefined ? apiNode.value : (nodeType?.defaultValue || 0),
+            result: apiNode.value !== undefined ? apiNode.value : (nodeType?.defaultValue || 0),
+            calculationType: nodeType?.calculationType || 'fixed',
+          },
+        };
+      });
+      this.calculate();
+      this.emitFlowData();
+    },
+
+    loadEdgesFromAPI(apiEdges) {
+      this.edges = apiEdges.map(edge => ({
+        source: edge.source,
+        target: edge.target,
+      }));
+      this.calculate();
+    },
+
+    // === API OUTPUT ===
+    emitFlowData() {
+      const outputData = {
+        nodes: this.nodes.map(n => ({
+          id: n.id,
+          type: n.type,
+          label: n.label,
+          icon: n.icon,
+          color: n.color,
+          position: { x: n.position.x, y: n.position.y },
+          value: n.data.value,
+          result: n.data.result,
+          calculationType: n.data.calculationType,
+        })),
+        edges: this.edges.map(e => ({
+          source: e.source,
+          target: e.target,
+        })),
+      };
+
+      // Emit for WeWeb workflows
+      this.$emit('trigger-event', {
+        name: 'flow-updated',
+        event: outputData,
+      });
+
+      // Auto-save if enabled
+      if (this.content.enableAutoSave) {
+        this.scheduleAutoSave(outputData);
+      }
+
+      return outputData;
+    },
+
+    scheduleAutoSave(data) {
+      if (this.autoSaveTimeout) {
+        clearTimeout(this.autoSaveTimeout);
+      }
+      this.autoSaveTimeout = setTimeout(() => {
+        this.$emit('trigger-event', {
+          name: 'auto-save',
+          event: data,
+        });
+      }, this.content.autoSaveDelay || 1000);
     },
 
     // === NODE MANAGEMENT ===
@@ -298,12 +431,16 @@ export default {
       this.nodes.push(node);
       this.showNodeMenu = false;
       this.calculate();
+      this.emitFlowData();
     },
 
     deleteNode(nodeId) {
+      if (!this.content.enableNodeDeletion) return;
+
       this.nodes = this.nodes.filter(n => n.id !== nodeId);
       this.edges = this.edges.filter(e => e.source !== nodeId && e.target !== nodeId);
       this.calculate();
+      this.emitFlowData();
     },
 
     duplicateNode(node) {
@@ -317,10 +454,12 @@ export default {
         data: { ...node.data },
       };
       this.nodes.push(newNode);
+      this.emitFlowData();
     },
 
     onNodeDataChange(node) {
       this.calculate();
+      this.emitFlowData();
     },
 
     onNodeHover(e) {
@@ -464,12 +603,17 @@ export default {
 
     onHandleMouseUp(e, node, type) {
       if (this.connectingFrom && type === 'target' && this.connectingFrom !== node.id) {
-        // Create edge
-        this.edges.push({
-          source: this.connectingFrom,
-          target: node.id,
-        });
-        this.calculate();
+        // Check if edge already exists
+        const exists = this.edges.some(e => e.source === this.connectingFrom && e.target === node.id);
+        if (!exists) {
+          // Create edge
+          this.edges.push({
+            source: this.connectingFrom,
+            target: node.id,
+          });
+          this.calculate();
+          this.emitFlowData();
+        }
       }
       this.connectingFrom = null;
       this.connectingFromType = null;
@@ -553,19 +697,6 @@ export default {
 
         node.data.result = result;
       });
-
-      this.$emit('trigger-event', {
-        name: 'flow-updated',
-        event: {
-          nodes: this.nodes.map(n => ({
-            id: n.id,
-            type: n.type,
-            value: n.data.value,
-            result: n.data.result,
-          })),
-          edges: this.edges,
-        },
-      });
     },
 
     formatValue(val) {
@@ -610,10 +741,10 @@ export default {
 
 .react-flow-edge {
   stroke-linecap: round;
-  transition: stroke 0.2s;
+  transition: stroke 0.2s, stroke-width 0.2s;
 
   &:hover {
-    stroke: #2563eb !important;
+    stroke: var(--connection-hover, #2563eb) !important;
     stroke-width: 3;
   }
 }
@@ -628,26 +759,22 @@ export default {
 
 .react-flow-node {
   position: absolute;
-  width: 280px;
+  width: var(--node-width, 280px);
   pointer-events: all;
   cursor: move;
-  background: white;
-  border-radius: 12px;
-  box-shadow:
-    0 4px 12px rgba(0, 0, 0, 0.08),
-    0 1px 3px rgba(0, 0, 0, 0.05);
+  background: var(--node-bg, #ffffff);
+  border: 1px solid var(--node-border, #e5e7eb);
+  border-radius: var(--node-radius, 12px);
+  box-shadow: var(--node-shadow);
   transition: box-shadow 0.2s, transform 0.2s;
 
   &:hover {
-    box-shadow:
-      0 8px 24px rgba(0, 0, 0, 0.12),
-      0 2px 6px rgba(0, 0, 0, 0.08);
     transform: translateY(-2px);
   }
 
   &.selected {
     box-shadow:
-      0 0 0 2px #2563eb,
+      0 0 0 2px var(--connection-hover, #2563eb),
       0 8px 24px rgba(37, 99, 235, 0.2);
   }
 }
@@ -660,7 +787,7 @@ export default {
   padding: 14px 16px;
   background: #3b82f6;
   color: white;
-  border-radius: 12px 12px 0 0;
+  border-radius: calc(var(--node-radius, 12px) - 1px) calc(var(--node-radius, 12px) - 1px) 0 0;
   display: flex;
   align-items: center;
   gap: 10px;

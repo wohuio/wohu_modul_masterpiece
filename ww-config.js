@@ -5,10 +5,11 @@ export default {
     },
   },
   properties: {
-    // JSON Configuration for node types
+    // === DATA CONFIGURATION ===
     nodeTypes: {
       label: { en: "Node Types (JSON Config)" },
       type: "Array",
+      section: "settings",
       options: {
         item: {
           type: "Object",
@@ -65,10 +66,10 @@ export default {
       bindable: true,
     },
 
-    // Initial nodes on canvas
     initialNodes: {
-      label: { en: "Initial Nodes" },
+      label: { en: "Initial Nodes (API Input)" },
       type: "Array",
+      section: "settings",
       options: {
         item: {
           type: "Object",
@@ -86,66 +87,163 @@ export default {
       bindable: true,
     },
 
-    // Canvas styling
+    initialEdges: {
+      label: { en: "Initial Edges (API Input)" },
+      type: "Array",
+      section: "settings",
+      options: {
+        item: {
+          type: "Object",
+          options: {
+            item: {
+              source: { type: "Text", label: { en: "Source Node ID" } },
+              target: { type: "Text", label: { en: "Target Node ID" } },
+            },
+          },
+        },
+      },
+      defaultValue: [],
+      bindable: true,
+    },
+
+    // === API CONFIGURATION ===
+    enableAutoSave: {
+      label: { en: "Auto-save on Change" },
+      type: "OnOff",
+      section: "settings",
+      defaultValue: false,
+    },
+
+    autoSaveDelay: {
+      label: { en: "Auto-save Delay (ms)" },
+      type: "Number",
+      section: "settings",
+      defaultValue: 1000,
+      hidden: (content) => !content.enableAutoSave,
+    },
+
+    // === FEATURES ===
+    showMiniMap: {
+      label: { en: "Show Mini Map" },
+      type: "OnOff",
+      section: "settings",
+      defaultValue: true,
+    },
+
+    showControls: {
+      label: { en: "Show Controls" },
+      type: "OnOff",
+      section: "settings",
+      defaultValue: true,
+    },
+
+    enableNodeDeletion: {
+      label: { en: "Enable Node Deletion" },
+      type: "OnOff",
+      section: "settings",
+      defaultValue: true,
+    },
+
+    enableEdgeDeletion: {
+      label: { en: "Enable Edge Deletion" },
+      type: "OnOff",
+      section: "settings",
+      defaultValue: true,
+    },
+
+    // === CANVAS STYLING ===
     canvasBackgroundColor: {
       label: { en: "Canvas Background" },
       type: "Color",
-      defaultValue: "#ffffff",
+      section: "style",
+      defaultValue: "#fafafa",
     },
 
     gridColor: {
       label: { en: "Grid Color" },
       type: "Color",
+      section: "style",
       defaultValue: "#e5e7eb",
     },
 
     gridSize: {
       label: { en: "Grid Size (px)" },
       type: "Number",
+      section: "style",
       defaultValue: 20,
     },
 
     showGrid: {
       label: { en: "Show Grid" },
       type: "OnOff",
+      section: "style",
       defaultValue: true,
     },
 
-    // Node styling
+    // === NODE STYLING ===
     nodeBackgroundColor: {
       label: { en: "Node Background" },
       type: "Color",
+      section: "style",
       defaultValue: "#ffffff",
     },
 
     nodeBorderColor: {
       label: { en: "Node Border" },
       type: "Color",
+      section: "style",
       defaultValue: "#e5e7eb",
     },
 
     nodeBorderRadius: {
       label: { en: "Node Border Radius (px)" },
       type: "Number",
-      defaultValue: 8,
+      section: "style",
+      defaultValue: 12,
     },
 
-    // Connection styling
+    nodeShadow: {
+      label: { en: "Node Shadow" },
+      type: "TextSelect",
+      section: "style",
+      options: {
+        choices: [
+          { value: "none", label: "None" },
+          { value: "sm", label: "Small" },
+          { value: "md", label: "Medium" },
+          { value: "lg", label: "Large" },
+          { value: "xl", label: "Extra Large" },
+        ],
+      },
+      defaultValue: "md",
+    },
+
+    nodeWidth: {
+      label: { en: "Node Width (px)" },
+      type: "Number",
+      section: "style",
+      defaultValue: 280,
+    },
+
+    // === CONNECTION STYLING ===
     connectionColor: {
       label: { en: "Connection Line Color" },
       type: "Color",
-      defaultValue: "#94a3b8",
+      section: "style",
+      defaultValue: "#b1b1b7",
     },
 
     connectionWidth: {
       label: { en: "Connection Line Width" },
       type: "Number",
+      section: "style",
       defaultValue: 2,
     },
 
     connectionStyle: {
       label: { en: "Connection Style" },
       type: "TextSelect",
+      section: "style",
       options: {
         choices: [
           { value: "bezier", label: "Curved (Bezier)" },
@@ -155,16 +253,25 @@ export default {
       defaultValue: "bezier",
     },
 
-    // Canvas size
+    connectionHoverColor: {
+      label: { en: "Connection Hover Color" },
+      type: "Color",
+      section: "style",
+      defaultValue: "#2563eb",
+    },
+
+    // === CANVAS SIZE ===
     canvasHeight: {
       label: { en: "Canvas Height (px)" },
       type: "Number",
+      section: "style",
       defaultValue: 800,
     },
 
     canvasWidth: {
       label: { en: "Canvas Width (px)" },
       type: "Number",
+      section: "style",
       defaultValue: 1200,
     },
   },
