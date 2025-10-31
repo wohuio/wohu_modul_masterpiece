@@ -451,6 +451,8 @@ export default {
 .flow-canvas-container {
   position: relative;
   overflow: hidden;
+  display: block;
+  min-height: 600px;
 }
 
 .background-canvas {
