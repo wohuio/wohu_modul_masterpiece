@@ -596,15 +596,6 @@ export default {
       deep: true,
       immediate: true,
     },
-    'content.initialEdges': {
-      handler(newEdges) {
-        if (newEdges && newEdges.length > 0) {
-          this.loadEdgesFromAPI(newEdges);
-        }
-      },
-      deep: true,
-      immediate: true,
-    },
   },
   mounted() {
     this.$nextTick(() => {
@@ -651,7 +642,7 @@ export default {
       this.nodes = apiNodes.map((apiNode, index) => {
         const nodeType = this.nodeTypes.find(t => t.id === apiNode.typeId) || this.nodeTypes[0];
         return {
-          id: apiNode.id || `node-${this.nextNodeId++}`,
+          id: apiNode.id || `node-${index}`,
           type: apiNode.typeId || nodeType?.id,
           label: nodeType?.label || 'Node',
           icon: nodeType?.icon || '📊',
@@ -675,6 +666,15 @@ export default {
           },
         };
       });
+
+      // Update nextNodeId to be after loaded nodes
+      this.nextNodeId = this.nodes.length;
+
+      // Load edges after nodes are created
+      if (this.content.initialEdges && this.content.initialEdges.length > 0) {
+        this.loadEdgesFromAPI(this.content.initialEdges);
+      }
+
       this.calculate();
       this.emitFlowData();
     },
