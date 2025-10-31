@@ -1058,7 +1058,7 @@ export default {
 
         switch (node.data.calculationType) {
           case 'fixed':
-            // Fixed: Use own value if no inputs, otherwise use input sum
+            // Fixed: Pass through input if connected, otherwise use own value
             result = inputs.length > 0 ? inputValue : value;
             break;
           case 'percentage':
