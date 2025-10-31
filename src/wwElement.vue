@@ -1,87 +1,190 @@
 <template>
-  <div class="flow-canvas-container" :style="containerStyle">
-    <!-- Background Canvas for Grid and Connections -->
-    <canvas
-      ref="backgroundCanvas"
-      class="background-canvas"
-      :width="canvasWidth"
-      :height="canvasHeight"
-      @mousedown="onCanvasMouseDown"
-      @mousemove="onCanvasMouseMove"
-      @mouseup="onCanvasMouseUp"
-    ></canvas>
+  <div class="react-flow-container" ref="container">
+    <!-- Background -->
+    <svg class="react-flow-background" :style="backgroundStyle">
+      <pattern
+        id="pattern-dots"
+        x="0"
+        y="0"
+        width="20"
+        height="20"
+        patternUnits="userSpaceOnUse"
+      >
+        <circle cx="2" cy="2" r="1" :fill="content.gridColor || '#e5e7eb'" />
+      </pattern>
+      <rect width="100%" height="100%" fill="url(#pattern-dots)" />
+    </svg>
 
-    <!-- Nodes Layer (HTML/CSS) -->
-    <div class="nodes-layer">
+    <!-- Canvas (Edges) -->
+    <svg
+      class="react-flow-edges"
+      :style="edgesStyle"
+      @mousedown="onPaneMouseDown"
+      @mousemove="onPaneMouseMove"
+      @mouseup="onPaneMouseUp"
+      @wheel="onPaneWheel"
+    >
+      <g :transform="`translate(${viewport.x}, ${viewport.y}) scale(${viewport.zoom})`">
+        <!-- Edges -->
+        <g class="edges-layer">
+          <path
+            v-for="edge in edges"
+            :key="`${edge.source}-${edge.target}`"
+            :d="getEdgePath(edge)"
+            :stroke="content.connectionColor || '#b1b1b7'"
+            :stroke-width="content.connectionWidth || 2"
+            fill="none"
+            class="react-flow-edge"
+          />
+        </g>
+      </g>
+    </svg>
+
+    <!-- Nodes Layer -->
+    <div
+      class="react-flow-nodes"
+      :style="{
+        transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
+        transformOrigin: '0 0'
+      }"
+    >
       <div
         v-for="node in nodes"
         :key="node.id"
-        class="flow-node"
-        :style="getNodeStyle(node)"
-        @mousedown="startDragNode($event, node)"
+        class="react-flow-node"
+        :class="[`node-type-${node.type}`, { selected: node.id === selectedNode }]"
+        :style="{
+          transform: `translate(${node.position.x}px, ${node.position.y}px)`,
+        }"
+        @mousedown="onNodeMouseDown($event, node)"
       >
-        <!-- Node Header -->
-        <div class="node-header" :style="{ backgroundColor: node.color }">
-          <span class="node-icon">{{ node.icon }}</span>
-          <span class="node-label">{{ node.label }}</span>
-          <button class="node-delete" @click.stop="deleteNode(node.id)">×</button>
+        <!-- Node Content -->
+        <div class="node-content">
+          <div class="node-header" :style="{ backgroundColor: node.color || '#3b82f6' }">
+            <span class="node-icon">{{ node.icon || '📊' }}</span>
+            <span class="node-label">{{ node.label || 'Node' }}</span>
+            <button class="node-delete" @click.stop="deleteNode(node.id)" title="Delete">×</button>
+          </div>
+
+          <div class="node-body">
+            <div class="node-field">
+              <label>Value</label>
+              <input
+                type="number"
+                v-model.number="node.data.value"
+                @input="onNodeDataChange(node)"
+                class="node-input"
+              />
+            </div>
+            <div class="node-result">
+              <span>Result</span>
+              <strong>{{ formatValue(node.data.result || 0) }}</strong>
+            </div>
+          </div>
         </div>
 
-        <!-- Node Body -->
-        <div class="node-body">
-          <div class="node-value">
-            <label>Value:</label>
-            <input
-              type="number"
-              v-model.number="node.value"
-              @input="recalculate"
-              class="node-input"
-            />
-          </div>
-          <div class="node-result">
-            <span>Result:</span>
-            <strong>{{ formatNumber(node.calculatedValue) }}</strong>
-          </div>
-        </div>
+        <!-- Handles -->
+        <div
+          v-if="node.type !== 'output'"
+          class="node-handle handle-target"
+          :style="{ backgroundColor: node.color || '#3b82f6' }"
+          @mousedown.stop="onHandleMouseDown($event, node, 'target')"
+          @mouseup.stop="onHandleMouseUp($event, node, 'target')"
+        ></div>
+        <div
+          v-if="node.type !== 'input'"
+          class="node-handle handle-source"
+          :style="{ backgroundColor: node.color || '#3b82f6' }"
+          @mousedown.stop="onHandleMouseDown($event, node, 'source')"
+          @mouseup.stop="onHandleMouseUp($event, node, 'source')"
+        ></div>
 
-        <!-- Connection Handles -->
-        <div
-          class="node-handle node-handle-input"
-          :style="{ backgroundColor: node.color }"
-          @mousedown.stop="startConnection($event, node.id, 'input')"
-          @mouseup.stop="endConnection($event, node.id, 'input')"
-        ></div>
-        <div
-          class="node-handle node-handle-output"
-          :style="{ backgroundColor: node.color }"
-          @mousedown.stop="startConnection($event, node.id, 'output')"
-          @mouseup.stop="endConnection($event, node.id, 'output')"
-        ></div>
+        <!-- Toolbar on hover -->
+        <div v-if="node.id === hoveredNode" class="node-toolbar">
+          <button @click.stop="duplicateNode(node)" title="Duplicate">⎘</button>
+          <button @click.stop="deleteNode(node.id)" title="Delete">🗑</button>
+        </div>
       </div>
     </div>
 
-    <!-- Add Node Button (Floating) -->
-    <button class="add-node-btn" @click="showNodePalette = !showNodePalette">
+    <!-- Controls -->
+    <div class="react-flow-controls">
+      <button @click="zoomIn" class="control-btn" title="Zoom In">
+        <svg viewBox="0 0 24 24" width="16" height="16">
+          <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="currentColor"/>
+        </svg>
+      </button>
+      <button @click="zoomOut" class="control-btn" title="Zoom Out">
+        <svg viewBox="0 0 24 24" width="16" height="16">
+          <path d="M19 13H5v-2h14v2z" fill="currentColor"/>
+        </svg>
+      </button>
+      <button @click="fitView" class="control-btn" title="Fit View">
+        <svg viewBox="0 0 24 24" width="16" height="16">
+          <path d="M4 4h6v2H6v4H4V4zm10 0h6v6h-2V6h-4V4zM4 14h2v4h4v2H4v-6zm16 0h-2v4h-4v2h6v-6z" fill="currentColor"/>
+        </svg>
+      </button>
+      <button @click="toggleLock" class="control-btn" :class="{ active: isLocked }" title="Lock/Unlock">
+        <svg v-if="isLocked" viewBox="0 0 24 24" width="16" height="16">
+          <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z" fill="currentColor"/>
+        </svg>
+        <svg v-else viewBox="0 0 24 24" width="16" height="16">
+          <path d="M12 17c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm6-9h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6h1.9c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm0 12H6V10h12v10z" fill="currentColor"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Mini Map -->
+    <div v-if="content.showMiniMap" class="react-flow-minimap">
+      <svg viewBox="0 0 200 150" class="minimap-svg">
+        <rect width="200" height="150" fill="#f8f9fa" />
+        <g
+          v-for="node in nodes"
+          :key="`mini-${node.id}`"
+          :transform="`translate(${(node.position.x * 200) / (canvasWidth || 1200)}, ${(node.position.y * 150) / (canvasHeight || 800)})`"
+        >
+          <rect
+            width="15"
+            height="10"
+            :fill="node.color || '#3b82f6'"
+            rx="1"
+          />
+        </g>
+        <!-- Viewport indicator -->
+        <rect
+          :x="(-viewport.x * 200) / ((canvasWidth || 1200) * viewport.zoom)"
+          :y="(-viewport.y * 150) / ((canvasHeight || 800) * viewport.zoom)"
+          :width="(200 / viewport.zoom)"
+          :height="(150 / viewport.zoom)"
+          fill="none"
+          stroke="#2563eb"
+          stroke-width="2"
+        />
+      </svg>
+    </div>
+
+    <!-- Add Node Button -->
+    <button class="add-node-btn" @click="showNodeMenu = !showNodeMenu">
       + Add Node
     </button>
 
-    <!-- Node Type Palette -->
-    <div v-if="showNodePalette" class="node-palette">
-      <div class="palette-header">
+    <!-- Node Menu -->
+    <div v-if="showNodeMenu" class="node-menu">
+      <div class="menu-header">
         <h3>Add Node</h3>
-        <button @click="showNodePalette = false">×</button>
+        <button @click="showNodeMenu = false">×</button>
       </div>
       <div
         v-for="nodeType in nodeTypes"
         :key="nodeType.id"
-        class="palette-item"
+        class="menu-item"
         :style="{ borderLeftColor: nodeType.color }"
         @click="addNode(nodeType)"
       >
-        <span class="palette-icon">{{ nodeType.icon }}</span>
-        <div class="palette-info">
-          <div class="palette-label">{{ nodeType.label }}</div>
-          <div class="palette-type">{{ nodeType.calculationType }}</div>
+        <span class="menu-icon">{{ nodeType.icon }}</span>
+        <div class="menu-info">
+          <div class="menu-label">{{ nodeType.label }}</div>
+          <div class="menu-desc">{{ nodeType.calculationType }}</div>
         </div>
       </div>
     </div>
@@ -90,44 +193,44 @@
 
 <script>
 export default {
-  name: "FlowCanvas",
+  name: "ReactFlowCanvas",
   props: {
-    content: {
-      type: Object,
-      required: true,
-    },
+    content: { type: Object, required: true },
   },
   emits: ['trigger-event'],
   data() {
     return {
       nodes: [],
-      connections: [],
+      edges: [],
       nextNodeId: 1,
+      selectedNode: null,
+      hoveredNode: null,
 
-      // Dragging state
+      // Viewport
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1,
+      },
+
+      // Panning
+      isPanning: false,
+      panStart: { x: 0, y: 0 },
+
+      // Dragging
       draggingNode: null,
       dragOffset: { x: 0, y: 0 },
 
-      // Connection state
+      // Connecting
       connectingFrom: null,
-      connectingFromHandle: null,
-      tempConnectionEnd: null,
+      connectingFromType: null,
 
-      // UI state
-      showNodePalette: false,
-
-      // Canvas context
-      ctx: null,
+      // UI
+      showNodeMenu: false,
+      isLocked: false,
     };
   },
   computed: {
-    containerStyle() {
-      return {
-        backgroundColor: this.content.canvasBackgroundColor || '#ffffff',
-        width: `${this.canvasWidth}px`,
-        height: `${this.canvasHeight}px`,
-      };
-    },
     canvasWidth() {
       return this.content.canvasWidth || 1200;
     },
@@ -137,454 +240,468 @@ export default {
     nodeTypes() {
       return this.content.nodeTypes || [];
     },
+    backgroundStyle() {
+      return {
+        backgroundColor: this.content.canvasBackgroundColor || '#ffffff',
+      };
+    },
+    edgesStyle() {
+      return {
+        pointerEvents: this.isLocked ? 'none' : 'all',
+      };
+    },
   },
   mounted() {
     this.$nextTick(() => {
       this.initCanvas();
-      this.loadInitialNodes();
+      // Add some default nodes for demo
+      if (this.nodes.length === 0 && this.nodeTypes.length > 0) {
+        this.addNode(this.nodeTypes[0], 100, 100);
+      }
     });
+
+    // Node hover tracking
+    document.addEventListener('mouseover', this.onNodeHover);
+  },
+  beforeUnmount() {
+    document.removeEventListener('mouseover', this.onNodeHover);
   },
   methods: {
     initCanvas() {
-      const canvas = this.$refs.backgroundCanvas;
-      if (!canvas) return;
-
-      this.ctx = canvas.getContext('2d');
-      this.drawGrid();
-      this.drawConnections();
+      // Initialize with default viewport
+      this.viewport = {
+        x: 50,
+        y: 50,
+        zoom: 1,
+      };
     },
 
-    drawGrid() {
-      if (!this.content.showGrid || !this.ctx) return;
-
-      const ctx = this.ctx;
-      const gridSize = this.content.gridSize || 20;
-      const gridColor = this.content.gridColor || '#e5e7eb';
-
-      ctx.clearRect(0, 0, this.canvasWidth, this.canvasHeight);
-      ctx.strokeStyle = gridColor;
-      ctx.lineWidth = 1;
-
-      // Vertical lines
-      for (let x = 0; x <= this.canvasWidth; x += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, this.canvasHeight);
-        ctx.stroke();
-      }
-
-      // Horizontal lines
-      for (let y = 0; y <= this.canvasHeight; y += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(this.canvasWidth, y);
-        ctx.stroke();
-      }
-    },
-
-    drawConnections() {
-      if (!this.ctx) return;
-
-      // Redraw grid first
-      this.drawGrid();
-
-      const ctx = this.ctx;
-      const connectionColor = this.content.connectionColor || '#94a3b8';
-      const connectionWidth = this.content.connectionWidth || 2;
-      const connectionStyle = this.content.connectionStyle || 'bezier';
-
-      ctx.strokeStyle = connectionColor;
-      ctx.lineWidth = connectionWidth;
-
-      // Draw all connections
-      this.connections.forEach(conn => {
-        const fromNode = this.nodes.find(n => n.id === conn.from);
-        const toNode = this.nodes.find(n => n.id === conn.to);
-
-        if (!fromNode || !toNode) return;
-
-        const startX = fromNode.x + 250; // Node width
-        const startY = fromNode.y + 60; // Middle of node
-        const endX = toNode.x;
-        const endY = toNode.y + 60;
-
-        ctx.beginPath();
-
-        if (connectionStyle === 'bezier') {
-          const cp1x = startX + 100;
-          const cp1y = startY;
-          const cp2x = endX - 100;
-          const cp2y = endY;
-
-          ctx.moveTo(startX, startY);
-          ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, endX, endY);
-        } else {
-          ctx.moveTo(startX, startY);
-          ctx.lineTo(endX, endY);
-        }
-
-        ctx.stroke();
-      });
-
-      // Draw temporary connection while dragging
-      if (this.connectingFrom && this.tempConnectionEnd) {
-        const fromNode = this.nodes.find(n => n.id === this.connectingFrom);
-        if (fromNode) {
-          ctx.strokeStyle = connectionColor;
-          ctx.setLineDash([5, 5]);
-
-          const startX = fromNode.x + 250;
-          const startY = fromNode.y + 60;
-
-          ctx.beginPath();
-          ctx.moveTo(startX, startY);
-          ctx.lineTo(this.tempConnectionEnd.x, this.tempConnectionEnd.y);
-          ctx.stroke();
-          ctx.setLineDash([]);
-        }
-      }
-    },
-
-    loadInitialNodes() {
-      const initialNodes = this.content.initialNodes || [];
-      initialNodes.forEach(nodeData => {
-        this.addNode(nodeData.type, nodeData.x, nodeData.y, nodeData.value);
-      });
-    },
-
-    addNode(nodeType, x = null, y = null, value = null) {
+    // === NODE MANAGEMENT ===
+    addNode(nodeType, x = null, y = null) {
       const node = {
-        id: this.nextNodeId++,
-        ...nodeType,
-        x: x !== null ? x : 100 + Math.random() * 300,
-        y: y !== null ? y : 100 + Math.random() * 300,
-        value: value !== null ? value : nodeType.defaultValue,
-        calculatedValue: value !== null ? value : nodeType.defaultValue,
+        id: `node-${this.nextNodeId++}`,
+        type: nodeType.id,
+        label: nodeType.label,
+        icon: nodeType.icon,
+        color: nodeType.color,
+        position: {
+          x: x !== null ? x : 150 + Math.random() * 200,
+          y: y !== null ? y : 100 + Math.random() * 200,
+        },
+        data: {
+          value: nodeType.defaultValue || 0,
+          result: nodeType.defaultValue || 0,
+          calculationType: nodeType.calculationType,
+        },
       };
 
       this.nodes.push(node);
-      this.showNodePalette = false;
-      this.recalculate();
-
-      this.$emit('trigger-event', {
-        name: 'node-added',
-        event: { node }
-      });
+      this.showNodeMenu = false;
+      this.calculate();
     },
 
     deleteNode(nodeId) {
       this.nodes = this.nodes.filter(n => n.id !== nodeId);
-      this.connections = this.connections.filter(
-        c => c.from !== nodeId && c.to !== nodeId
-      );
-      this.drawConnections();
-      this.recalculate();
+      this.edges = this.edges.filter(e => e.source !== nodeId && e.target !== nodeId);
+      this.calculate();
     },
 
-    getNodeStyle(node) {
-      return {
-        left: `${node.x}px`,
-        top: `${node.y}px`,
-        backgroundColor: this.content.nodeBackgroundColor || '#ffffff',
-        border: `1px solid ${this.content.nodeBorderColor || '#e5e7eb'}`,
-        borderRadius: `${this.content.nodeBorderRadius || 8}px`,
+    duplicateNode(node) {
+      const newNode = {
+        ...node,
+        id: `node-${this.nextNodeId++}`,
+        position: {
+          x: node.position.x + 50,
+          y: node.position.y + 50,
+        },
+        data: { ...node.data },
       };
+      this.nodes.push(newNode);
     },
 
-    // === DRAG & DROP ===
-    startDragNode(event, node) {
+    onNodeDataChange(node) {
+      this.calculate();
+    },
+
+    onNodeHover(e) {
+      const nodeEl = e.target.closest('.react-flow-node');
+      if (nodeEl) {
+        const nodeId = this.nodes.find(n => {
+          const el = nodeEl;
+          return el.querySelector('.node-label')?.textContent === n.label;
+        })?.id;
+        this.hoveredNode = nodeId;
+      } else {
+        this.hoveredNode = null;
+      }
+    },
+
+    // === DRAGGING ===
+    onNodeMouseDown(e, node) {
+      if (this.isLocked) return;
+      if (e.target.classList.contains('node-input')) return;
+
       this.draggingNode = node;
-      const rect = event.currentTarget.getBoundingClientRect();
+      this.selectedNode = node.id;
+
+      const nodeEl = e.currentTarget;
+      const rect = nodeEl.getBoundingClientRect();
+      const containerRect = this.$refs.container.getBoundingClientRect();
+
       this.dragOffset = {
-        x: event.clientX - rect.left,
-        y: event.clientY - rect.top,
+        x: (e.clientX - rect.left) / this.viewport.zoom,
+        y: (e.clientY - rect.top) / this.viewport.zoom,
       };
-      document.addEventListener('mousemove', this.onDragNode);
-      document.addEventListener('mouseup', this.stopDragNode);
+
+      document.addEventListener('mousemove', this.onNodeMouseMove);
+      document.addEventListener('mouseup', this.onNodeMouseUp);
     },
 
-    onDragNode(event) {
+    onNodeMouseMove(e) {
       if (!this.draggingNode) return;
 
-      const container = this.$el.getBoundingClientRect();
-      this.draggingNode.x = event.clientX - container.left - this.dragOffset.x;
-      this.draggingNode.y = event.clientY - container.top - this.dragOffset.y;
+      const containerRect = this.$refs.container.getBoundingClientRect();
+      const x = (e.clientX - containerRect.left - this.viewport.x) / this.viewport.zoom - this.dragOffset.x;
+      const y = (e.clientY - containerRect.top - this.viewport.y) / this.viewport.zoom - this.dragOffset.y;
 
-      this.drawConnections();
+      this.draggingNode.position.x = x;
+      this.draggingNode.position.y = y;
     },
 
-    stopDragNode() {
+    onNodeMouseUp() {
       this.draggingNode = null;
-      document.removeEventListener('mousemove', this.onDragNode);
-      document.removeEventListener('mouseup', this.stopDragNode);
+      document.removeEventListener('mousemove', this.onNodeMouseMove);
+      document.removeEventListener('mouseup', this.onNodeMouseUp);
+    },
+
+    // === PANNING ===
+    onPaneMouseDown(e) {
+      if (e.target.classList.contains('react-flow-edges')) {
+        this.isPanning = true;
+        this.panStart = {
+          x: e.clientX - this.viewport.x,
+          y: e.clientY - this.viewport.y,
+        };
+        e.currentTarget.style.cursor = 'grabbing';
+      }
+    },
+
+    onPaneMouseMove(e) {
+      if (this.isPanning) {
+        this.viewport.x = e.clientX - this.panStart.x;
+        this.viewport.y = e.clientY - this.panStart.y;
+      }
+    },
+
+    onPaneMouseUp(e) {
+      this.isPanning = false;
+      e.currentTarget.style.cursor = 'grab';
+    },
+
+    // === ZOOM ===
+    onPaneWheel(e) {
+      e.preventDefault();
+      const delta = e.deltaY * -0.001;
+      const newZoom = Math.min(Math.max(this.viewport.zoom + delta, 0.1), 2);
+
+      // Zoom towards mouse position
+      const containerRect = this.$refs.container.getBoundingClientRect();
+      const mouseX = e.clientX - containerRect.left;
+      const mouseY = e.clientY - containerRect.top;
+
+      const scaleDiff = newZoom - this.viewport.zoom;
+      this.viewport.x -= (mouseX - this.viewport.x) * (scaleDiff / this.viewport.zoom);
+      this.viewport.y -= (mouseY - this.viewport.y) * (scaleDiff / this.viewport.zoom);
+      this.viewport.zoom = newZoom;
+    },
+
+    zoomIn() {
+      this.viewport.zoom = Math.min(this.viewport.zoom + 0.1, 2);
+    },
+
+    zoomOut() {
+      this.viewport.zoom = Math.max(this.viewport.zoom - 0.1, 0.1);
+    },
+
+    fitView() {
+      if (this.nodes.length === 0) return;
+
+      const padding = 50;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+      this.nodes.forEach(node => {
+        minX = Math.min(minX, node.position.x);
+        minY = Math.min(minY, node.position.y);
+        maxX = Math.max(maxX, node.position.x + 280);
+        maxY = Math.max(maxY, node.position.y + 140);
+      });
+
+      const width = maxX - minX;
+      const height = maxY - minY;
+
+      const containerRect = this.$refs.container.getBoundingClientRect();
+      const scaleX = (containerRect.width - padding * 2) / width;
+      const scaleY = (containerRect.height - padding * 2) / height;
+      const zoom = Math.min(scaleX, scaleY, 1);
+
+      this.viewport.zoom = zoom;
+      this.viewport.x = -minX * zoom + padding;
+      this.viewport.y = -minY * zoom + padding;
+    },
+
+    toggleLock() {
+      this.isLocked = !this.isLocked;
     },
 
     // === CONNECTIONS ===
-    startConnection(event, nodeId, handleType) {
-      if (handleType === 'output') {
-        this.connectingFrom = nodeId;
-        this.connectingFromHandle = 'output';
+    onHandleMouseDown(e, node, type) {
+      if (this.isLocked) return;
+      if (type === 'source') {
+        this.connectingFrom = node.id;
+        this.connectingFromType = 'source';
       }
     },
 
-    endConnection(event, nodeId, handleType) {
-      if (handleType === 'input' && this.connectingFrom && this.connectingFrom !== nodeId) {
-        // Create connection
-        this.connections.push({
-          from: this.connectingFrom,
-          to: nodeId,
+    onHandleMouseUp(e, node, type) {
+      if (this.connectingFrom && type === 'target' && this.connectingFrom !== node.id) {
+        // Create edge
+        this.edges.push({
+          source: this.connectingFrom,
+          target: node.id,
         });
-        this.recalculate();
+        this.calculate();
       }
-
       this.connectingFrom = null;
-      this.connectingFromHandle = null;
-      this.tempConnectionEnd = null;
-      this.drawConnections();
+      this.connectingFromType = null;
     },
 
-    onCanvasMouseDown() {},
+    // === EDGE RENDERING ===
+    getEdgePath(edge) {
+      const sourceNode = this.nodes.find(n => n.id === edge.source);
+      const targetNode = this.nodes.find(n => n.id === edge.target);
 
-    onCanvasMouseMove(event) {
-      if (this.connectingFrom) {
-        const rect = this.$refs.backgroundCanvas.getBoundingClientRect();
-        this.tempConnectionEnd = {
-          x: event.clientX - rect.left,
-          y: event.clientY - rect.top,
-        };
-        this.drawConnections();
-      }
+      if (!sourceNode || !targetNode) return '';
+
+      const sourceX = sourceNode.position.x + 280;
+      const sourceY = sourceNode.position.y + 70;
+      const targetX = targetNode.position.x;
+      const targetY = targetNode.position.y + 70;
+
+      const dx = targetX - sourceX;
+      const dy = targetY - sourceY;
+      const offset = Math.abs(dx) * 0.5;
+
+      return `M ${sourceX} ${sourceY} C ${sourceX + offset} ${sourceY}, ${targetX - offset} ${targetY}, ${targetX} ${targetY}`;
     },
 
-    onCanvasMouseUp() {
-      this.connectingFrom = null;
-      this.tempConnectionEnd = null;
-      this.drawConnections();
-    },
-
-    // === CALCULATION ENGINE ===
-    recalculate() {
-      // Build dependency graph
+    // === CALCULATION ===
+    calculate() {
       const graph = {};
       this.nodes.forEach(n => {
         graph[n.id] = {
           node: n,
-          inputs: this.connections.filter(c => c.to === n.id).map(c => c.from),
+          inputs: this.edges.filter(e => e.target === n.id).map(e => e.source),
         };
       });
 
-      // Topological sort
       const visited = new Set();
       const sorted = [];
 
       const visit = (id) => {
         if (visited.has(id)) return;
         visited.add(id);
-
         const inputs = graph[id]?.inputs || [];
         inputs.forEach(inputId => visit(inputId));
         sorted.push(id);
       };
 
-      Object.keys(graph).forEach(id => visit(parseInt(id)));
+      Object.keys(graph).forEach(id => visit(id));
 
-      // Calculate values
       sorted.forEach(id => {
-        const nodeData = graph[id];
-        if (!nodeData) return;
+        const { node, inputs } = graph[id];
+        if (!node) return;
 
-        const node = nodeData.node;
-        const inputs = nodeData.inputs;
+        let inputValue = node.data.value;
 
-        let inputValue = node.value;
-
-        // Sum all inputs
         if (inputs.length > 0) {
           inputValue = inputs.reduce((sum, fromId) => {
-            const fromNode = this.nodes.find(n => n.id === fromId);
-            return sum + (fromNode?.calculatedValue || 0);
+            const fromNode = graph[fromId]?.node;
+            return sum + (fromNode?.data?.result || 0);
           }, 0);
         }
 
-        // Apply calculation based on type
-        switch (node.calculationType) {
+        let result = inputValue;
+        const value = node.data.value;
+
+        switch (node.data.calculationType) {
           case 'fixed':
-            node.calculatedValue = node.value;
+            result = value;
             break;
           case 'percentage':
-            node.calculatedValue = inputValue + (inputValue * node.value / 100);
+            result = inputValue + (inputValue * value / 100);
             break;
           case 'multiply':
-            node.calculatedValue = inputValue * node.value;
+            result = inputValue * value;
             break;
           case 'add':
-            node.calculatedValue = inputValue + node.value;
+            result = inputValue + value;
             break;
           case 'subtract':
-            node.calculatedValue = inputValue - node.value;
+            result = inputValue - value;
             break;
-          default:
-            node.calculatedValue = inputValue;
         }
+
+        node.data.result = result;
       });
 
       this.$emit('trigger-event', {
-        name: 'calculation-updated',
+        name: 'flow-updated',
         event: {
           nodes: this.nodes.map(n => ({
             id: n.id,
-            value: n.value,
-            calculatedValue: n.calculatedValue,
+            type: n.type,
+            value: n.data.value,
+            result: n.data.result,
           })),
+          edges: this.edges,
         },
       });
     },
 
-    formatNumber(num) {
-      return num?.toFixed(2) || '0.00';
+    formatValue(val) {
+      return typeof val === 'number' ? val.toFixed(2) : '0.00';
     },
   },
 };
 </script>
 
 <style scoped lang="scss">
-.flow-canvas-container {
+.react-flow-container {
   position: relative;
-  overflow: hidden;
-  display: block;
+  width: 100%;
+  height: 100%;
   min-height: 600px;
+  overflow: hidden;
+  background: #fafafa;
 }
 
-.background-canvas {
-  position: absolute;
-  top: 0;
-  left: 0;
-  pointer-events: auto;
-}
-
-.nodes-layer {
+.react-flow-background {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  pointer-events: none;
+  z-index: 0;
 }
 
-.flow-node {
+.react-flow-edges {
   position: absolute;
-  width: 280px;
-  pointer-events: auto;
-  cursor: move;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 1));
-  backdrop-filter: blur(10px);
-  box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.08),
-    0 2px 8px rgba(0, 0, 0, 0.04),
-    inset 0 1px 0 rgba(255, 255, 255, 0.8);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  transform: translateZ(0);
-
-  &:hover {
-    box-shadow:
-      0 12px 48px rgba(0, 0, 0, 0.12),
-      0 4px 16px rgba(0, 0, 0, 0.08),
-      inset 0 1px 0 rgba(255, 255, 255, 0.9);
-    transform: translateY(-2px) scale(1.02);
-  }
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  cursor: grab;
 
   &:active {
     cursor: grabbing;
-    transform: scale(0.98);
   }
+}
+
+.react-flow-edge {
+  stroke-linecap: round;
+  transition: stroke 0.2s;
+
+  &:hover {
+    stroke: #2563eb !important;
+    stroke-width: 3;
+  }
+}
+
+.react-flow-nodes {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.react-flow-node {
+  position: absolute;
+  width: 280px;
+  pointer-events: all;
+  cursor: move;
+  background: white;
+  border-radius: 12px;
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.08),
+    0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: box-shadow 0.2s, transform 0.2s;
+
+  &:hover {
+    box-shadow:
+      0 8px 24px rgba(0, 0, 0, 0.12),
+      0 2px 6px rgba(0, 0, 0, 0.08);
+    transform: translateY(-2px);
+  }
+
+  &.selected {
+    box-shadow:
+      0 0 0 2px #2563eb,
+      0 8px 24px rgba(37, 99, 235, 0.2);
+  }
+}
+
+.node-content {
+  position: relative;
 }
 
 .node-header {
-  padding: 14px 18px;
+  padding: 14px 16px;
+  background: #3b82f6;
   color: white;
+  border-radius: 12px 12px 0 0;
   display: flex;
   align-items: center;
   gap: 10px;
-  border-radius: 12px 12px 0 0;
   font-weight: 700;
   font-size: 14px;
-  background: linear-gradient(135deg, var(--node-color, #3b82f6), var(--node-color-dark, #2563eb));
-  box-shadow:
-    0 4px 12px rgba(0, 0, 0, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.2);
-  position: relative;
-  overflow: hidden;
-
-  &::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
-    transition: left 0.5s;
-  }
-
-  &:hover::before {
-    left: 100%;
-  }
 }
 
 .node-icon {
-  font-size: 22px;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
-  animation: float 3s ease-in-out infinite;
-}
-
-@keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-3px); }
+  font-size: 20px;
 }
 
 .node-label {
   flex: 1;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-  letter-spacing: 0.3px;
 }
 
 .node-delete {
-  background: rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(5px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
   color: white;
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   cursor: pointer;
   font-size: 18px;
-  font-weight: bold;
-  line-height: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.2s;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 
   &:hover {
-    background: rgba(239, 68, 68, 0.9);
-    border-color: rgba(239, 68, 68, 1);
-    transform: rotate(90deg) scale(1.1);
-    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
-  }
-
-  &:active {
-    transform: rotate(90deg) scale(0.95);
+    background: #ef4444;
+    transform: rotate(90deg);
   }
 }
 
 .node-body {
-  padding: 20px 18px;
-  background: rgba(255, 255, 255, 0.5);
+  padding: 16px;
 }
 
-.node-value {
-  margin-bottom: 14px;
+.node-field {
+  margin-bottom: 12px;
 
   label {
     display: block;
@@ -598,56 +715,40 @@ export default {
 
   .node-input {
     width: 100%;
-    padding: 10px 12px;
+    padding: 8px 12px;
     border: 2px solid #e5e7eb;
-    border-radius: 8px;
-    font-size: 15px;
-    font-weight: 500;
-    background: white;
+    border-radius: 6px;
+    font-size: 14px;
     transition: all 0.2s;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-
-    &:hover {
-      border-color: #cbd5e1;
-    }
 
     &:focus {
       outline: none;
       border-color: #3b82f6;
-      box-shadow:
-        0 0 0 3px rgba(59, 130, 246, 0.1),
-        0 2px 8px rgba(59, 130, 246, 0.15);
-      transform: translateY(-1px);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
     }
   }
 }
 
 .node-result {
-  padding: 12px 14px;
+  padding: 10px 12px;
   background: linear-gradient(135deg, #ecfdf5, #d1fae5);
-  border-radius: 8px;
-  border: 1px solid #86efac;
-  font-size: 13px;
+  border-radius: 6px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  box-shadow:
-    0 2px 8px rgba(16, 185, 129, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  border: 1px solid #86efac;
 
   span {
-    color: #059669;
-    font-weight: 600;
     font-size: 11px;
+    font-weight: 600;
+    color: #059669;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
   }
 
   strong {
-    color: #059669;
-    font-size: 17px;
+    font-size: 16px;
     font-weight: 700;
-    text-shadow: 0 1px 2px rgba(16, 185, 129, 0.1);
+    color: #059669;
   }
 }
 
@@ -657,144 +758,54 @@ export default {
   height: 14px;
   border-radius: 50%;
   border: 3px solid white;
+  background: #3b82f6;
   cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  transition: all 0.2s;
   z-index: 10;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.15),
-    0 0 0 0 rgba(59, 130, 246, 0);
 
   &:hover {
     transform: scale(1.4);
-    border-width: 4px;
-    box-shadow:
-      0 4px 16px rgba(0, 0, 0, 0.25),
-      0 0 0 4px rgba(59, 130, 246, 0.2);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
   }
 
-  &:active {
-    transform: scale(1.2);
+  &.handle-target {
+    top: 50%;
+    left: -7px;
+    transform: translateY(-50%);
   }
-}
 
-.node-handle-input {
-  left: -7px;
-  top: 50%;
-  transform: translateY(-50%);
-  animation: pulse-input 2s ease-in-out infinite;
-}
-
-.node-handle-output {
-  right: -7px;
-  top: 50%;
-  transform: translateY(-50%);
-  animation: pulse-output 2s ease-in-out infinite;
-  animation-delay: 1s;
-}
-
-@keyframes pulse-input {
-  0%, 100% {
-    box-shadow:
-      0 2px 8px rgba(0, 0, 0, 0.15),
-      0 0 0 0 rgba(59, 130, 246, 0);
-  }
-  50% {
-    box-shadow:
-      0 2px 8px rgba(0, 0, 0, 0.15),
-      0 0 0 6px rgba(59, 130, 246, 0.15);
+  &.handle-source {
+    top: 50%;
+    right: -7px;
+    transform: translateY(-50%);
   }
 }
 
-@keyframes pulse-output {
-  0%, 100% {
-    box-shadow:
-      0 2px 8px rgba(0, 0, 0, 0.15),
-      0 0 0 0 rgba(16, 185, 129, 0);
-  }
-  50% {
-    box-shadow:
-      0 2px 8px rgba(0, 0, 0, 0.15),
-      0 0 0 6px rgba(16, 185, 129, 0.15);
-  }
-}
-
-.add-node-btn {
+.node-toolbar {
   position: absolute;
-  bottom: 20px;
-  right: 20px;
-  padding: 14px 28px;
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
-  color: white;
-  border: none;
-  border-radius: 12px;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow:
-    0 8px 24px rgba(59, 130, 246, 0.35),
-    0 2px 8px rgba(59, 130, 246, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.2);
-  z-index: 100;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  font-size: 12px;
-
-  &:hover {
-    background: linear-gradient(135deg, #2563eb, #1d4ed8);
-    transform: translateY(-2px) scale(1.05);
-    box-shadow:
-      0 12px 32px rgba(59, 130, 246, 0.45),
-      0 4px 12px rgba(59, 130, 246, 0.3),
-      inset 0 1px 0 rgba(255, 255, 255, 0.3);
-  }
-
-  &:active {
-    transform: translateY(0) scale(1);
-    box-shadow:
-      0 4px 16px rgba(59, 130, 246, 0.3),
-      inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  }
-}
-
-.node-palette {
-  position: absolute;
-  bottom: 80px;
-  right: 20px;
-  width: 280px;
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-  z-index: 100;
-  max-height: 500px;
-  overflow-y: auto;
-}
-
-.palette-header {
-  padding: 16px;
-  border-bottom: 1px solid #e5e7eb;
+  top: -40px;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-
-  h3 {
-    margin: 0;
-    font-size: 16px;
-    font-weight: 600;
-  }
+  gap: 4px;
+  background: white;
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 
   button {
-    background: none;
-    border: none;
-    font-size: 24px;
-    cursor: pointer;
-    color: #6b7280;
     width: 32px;
     height: 32px;
+    border: none;
+    background: transparent;
+    border-radius: 6px;
+    cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 4px;
+    font-size: 16px;
+    transition: background 0.2s;
 
     &:hover {
       background: #f3f4f6;
@@ -802,42 +813,167 @@ export default {
   }
 }
 
-.palette-item {
-  padding: 12px 16px;
+.react-flow-controls {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  gap: 4px;
+  background: white;
+  border-radius: 8px;
+  padding: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  z-index: 10;
+
+  .control-btn {
+    width: 36px;
+    height: 36px;
+    border: none;
+    background: transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #6b7280;
+    transition: all 0.2s;
+
+    &:hover {
+      background: #f3f4f6;
+      color: #111827;
+    }
+
+    &.active {
+      background: #3b82f6;
+      color: white;
+    }
+  }
+}
+
+.react-flow-minimap {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  width: 200px;
+  height: 150px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  z-index: 10;
+
+  .minimap-svg {
+    width: 100%;
+    height: 100%;
+  }
+}
+
+.add-node-btn {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
   cursor: pointer;
-  border-bottom: 1px solid #f3f4f6;
-  border-left: 4px solid;
-  transition: background 0.2s;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  z-index: 10;
+  transition: all 0.2s;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 
   &:hover {
-    background: #f9fafb;
-  }
-
-  &:last-child {
-    border-bottom: none;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
   }
 }
 
-.palette-icon {
-  font-size: 24px;
-}
+.node-menu {
+  position: absolute;
+  top: 70px;
+  right: 20px;
+  width: 280px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  z-index: 11;
+  max-height: 400px;
+  overflow-y: auto;
 
-.palette-info {
-  flex: 1;
-}
+  .menu-header {
+    padding: 16px;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 
-.palette-label {
-  font-size: 14px;
-  font-weight: 600;
-  color: #111827;
-  margin-bottom: 2px;
-}
+    h3 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 700;
+    }
 
-.palette-type {
-  font-size: 12px;
-  color: #6b7280;
+    button {
+      background: none;
+      border: none;
+      font-size: 24px;
+      cursor: pointer;
+      color: #6b7280;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      transition: background 0.2s;
+
+      &:hover {
+        background: #f3f4f6;
+      }
+    }
+  }
+
+  .menu-item {
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    border-bottom: 1px solid #f3f4f6;
+    border-left: 4px solid;
+    transition: background 0.2s;
+
+    &:hover {
+      background: #f9fafb;
+    }
+
+    &:last-child {
+      border-bottom: none;
+    }
+
+    .menu-icon {
+      font-size: 24px;
+    }
+
+    .menu-info {
+      flex: 1;
+
+      .menu-label {
+        font-size: 14px;
+        font-weight: 600;
+        color: #111827;
+      }
+
+      .menu-desc {
+        font-size: 12px;
+        color: #6b7280;
+      }
+    }
+  }
 }
 </style>

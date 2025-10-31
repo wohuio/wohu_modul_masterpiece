@@ -9,6 +9,33 @@ export default {
     nodeTypes: {
       label: { en: "Node Types (JSON Config)" },
       type: "Array",
+      options: {
+        item: {
+          type: "Object",
+          options: {
+            item: {
+              id: { type: "Text", label: { en: "ID" } },
+              label: { type: "Text", label: { en: "Label" } },
+              icon: { type: "Text", label: { en: "Icon (Emoji)" } },
+              color: { type: "Color", label: { en: "Color" } },
+              calculationType: {
+                type: "TextSelect",
+                label: { en: "Calculation Type" },
+                options: {
+                  choices: [
+                    { value: "fixed", label: "Fixed Value" },
+                    { value: "percentage", label: "Percentage" },
+                    { value: "multiply", label: "Multiply" },
+                    { value: "add", label: "Add" },
+                    { value: "subtract", label: "Subtract" },
+                  ],
+                },
+              },
+              defaultValue: { type: "Number", label: { en: "Default Value" } },
+            },
+          },
+        },
+      },
       defaultValue: [
         {
           id: "base",
@@ -42,6 +69,19 @@ export default {
     initialNodes: {
       label: { en: "Initial Nodes" },
       type: "Array",
+      options: {
+        item: {
+          type: "Object",
+          options: {
+            item: {
+              typeId: { type: "Text", label: { en: "Node Type ID" } },
+              x: { type: "Number", label: { en: "X Position" } },
+              y: { type: "Number", label: { en: "Y Position" } },
+              value: { type: "Number", label: { en: "Initial Value" } },
+            },
+          },
+        },
+      },
       defaultValue: [],
       bindable: true,
     },
