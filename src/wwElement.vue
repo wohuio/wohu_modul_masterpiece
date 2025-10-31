@@ -36,6 +36,16 @@
             fill="none"
             class="react-flow-edge"
           />
+          <!-- Temporary connection line while dragging -->
+          <path
+            v-if="connectingFrom && tempConnectionPos"
+            :d="getTempConnectionPath()"
+            :stroke="content.connectionColor || '#b1b1b7'"
+            :stroke-width="content.connectionWidth || 2"
+            stroke-dasharray="5,5"
+            fill="none"
+            class="react-flow-edge-temp"
+          />
         </g>
       </g>
     </svg>
@@ -69,17 +79,31 @@
 
           <div class="node-body">
             <div class="node-field">
+              <label>Type</label>
+              <div class="node-type-badge">{{ node.data.calculationType || 'fixed' }}</div>
+            </div>
+
+            <div class="node-field">
               <label>Value</label>
               <input
                 type="number"
                 v-model.number="node.data.value"
+                :min="node.data.minValue"
+                :max="node.data.maxValue"
                 @input="onNodeDataChange(node)"
+                @click.stop
                 class="node-input"
               />
             </div>
-            <div class="node-result">
-              <span>Result</span>
-              <strong>{{ formatValue(node.data.result || 0) }}</strong>
+
+            <div v-if="node.data.description" class="node-field">
+              <label>Info</label>
+              <div class="node-description">{{ node.data.description }}</div>
+            </div>
+
+            <div class="node-field node-result-field">
+              <label>Result</label>
+              <strong class="node-result-value">{{ formatValue(node.data.result || 0) }}</strong>
             </div>
           </div>
         </div>
@@ -225,6 +249,7 @@ export default {
       // Connecting
       connectingFrom: null,
       connectingFromType: null,
+      tempConnectionPos: null,
 
       // UI
       showNodeMenu: false,
@@ -348,6 +373,9 @@ export default {
             value: apiNode.value !== undefined ? apiNode.value : (nodeType?.defaultValue || 0),
             result: apiNode.value !== undefined ? apiNode.value : (nodeType?.defaultValue || 0),
             calculationType: nodeType?.calculationType || 'fixed',
+            description: nodeType?.description || '',
+            minValue: nodeType?.minValue,
+            maxValue: nodeType?.maxValue,
           },
         };
       });
@@ -424,7 +452,10 @@ export default {
         data: {
           value: nodeType.defaultValue || 0,
           result: nodeType.defaultValue || 0,
-          calculationType: nodeType.calculationType,
+          calculationType: nodeType.calculationType || 'fixed',
+          description: nodeType.description || '',
+          minValue: nodeType.minValue,
+          maxValue: nodeType.maxValue,
         },
       };
 
@@ -596,9 +627,33 @@ export default {
     onHandleMouseDown(e, node, type) {
       if (this.isLocked) return;
       if (type === 'source') {
+        e.stopPropagation();
         this.connectingFrom = node.id;
         this.connectingFromType = 'source';
+        this.tempConnectionPos = { x: e.clientX, y: e.clientY };
+
+        // Add global listeners for connection dragging
+        document.addEventListener('mousemove', this.onConnectionDrag);
+        document.addEventListener('mouseup', this.onConnectionEnd);
       }
+    },
+
+    onConnectionDrag(e) {
+      if (this.connectingFrom) {
+        const containerRect = this.$refs.container.getBoundingClientRect();
+        this.tempConnectionPos = {
+          x: (e.clientX - containerRect.left - this.viewport.x) / this.viewport.zoom,
+          y: (e.clientY - containerRect.top - this.viewport.y) / this.viewport.zoom,
+        };
+      }
+    },
+
+    onConnectionEnd(e) {
+      document.removeEventListener('mousemove', this.onConnectionDrag);
+      document.removeEventListener('mouseup', this.onConnectionEnd);
+      this.connectingFrom = null;
+      this.connectingFromType = null;
+      this.tempConnectionPos = null;
     },
 
     onHandleMouseUp(e, node, type) {
@@ -615,8 +670,12 @@ export default {
           this.emitFlowData();
         }
       }
+      // Clean up
+      document.removeEventListener('mousemove', this.onConnectionDrag);
+      document.removeEventListener('mouseup', this.onConnectionEnd);
       this.connectingFrom = null;
       this.connectingFromType = null;
+      this.tempConnectionPos = null;
     },
 
     // === EDGE RENDERING ===
@@ -626,13 +685,32 @@ export default {
 
       if (!sourceNode || !targetNode) return '';
 
-      const sourceX = sourceNode.position.x + 280;
+      const nodeWidth = this.content.nodeWidth || 280;
+      const sourceX = sourceNode.position.x + nodeWidth;
       const sourceY = sourceNode.position.y + 70;
       const targetX = targetNode.position.x;
       const targetY = targetNode.position.y + 70;
 
       const dx = targetX - sourceX;
       const dy = targetY - sourceY;
+      const offset = Math.abs(dx) * 0.5;
+
+      return `M ${sourceX} ${sourceY} C ${sourceX + offset} ${sourceY}, ${targetX - offset} ${targetY}, ${targetX} ${targetY}`;
+    },
+
+    getTempConnectionPath() {
+      if (!this.connectingFrom || !this.tempConnectionPos) return '';
+
+      const sourceNode = this.nodes.find(n => n.id === this.connectingFrom);
+      if (!sourceNode) return '';
+
+      const nodeWidth = this.content.nodeWidth || 280;
+      const sourceX = sourceNode.position.x + nodeWidth;
+      const sourceY = sourceNode.position.y + 70;
+      const targetX = this.tempConnectionPos.x;
+      const targetY = this.tempConnectionPos.y;
+
+      const dx = targetX - sourceX;
       const offset = Math.abs(dx) * 0.5;
 
       return `M ${sourceX} ${sourceY} C ${sourceX + offset} ${sourceY}, ${targetX - offset} ${targetY}, ${targetX} ${targetY}`;
@@ -749,6 +827,12 @@ export default {
   }
 }
 
+.react-flow-edge-temp {
+  stroke-linecap: round;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
 .react-flow-nodes {
   position: absolute;
   top: 0;
@@ -828,7 +912,7 @@ export default {
 }
 
 .node-field {
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 
   label {
     display: block;
@@ -856,27 +940,43 @@ export default {
   }
 }
 
-.node-result {
+.node-type-badge {
+  display: inline-block;
+  padding: 6px 10px;
+  background: linear-gradient(135deg, #eff6ff, #dbeafe);
+  border: 1px solid #93c5fd;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #1e40af;
+  text-transform: capitalize;
+}
+
+.node-description {
+  padding: 8px 10px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.4;
+  font-style: italic;
+}
+
+.node-result-field {
+  margin-bottom: 0;
+}
+
+.node-result-value {
+  display: block;
   padding: 10px 12px;
   background: linear-gradient(135deg, #ecfdf5, #d1fae5);
-  border-radius: 6px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   border: 1px solid #86efac;
-
-  span {
-    font-size: 11px;
-    font-weight: 600;
-    color: #059669;
-    text-transform: uppercase;
-  }
-
-  strong {
-    font-size: 16px;
-    font-weight: 700;
-    color: #059669;
-  }
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #059669;
+  text-align: center;
 }
 
 .node-handle {
