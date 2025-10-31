@@ -367,7 +367,8 @@
                       rows="2"
                     ></textarea>
                     <div class="formula-hint">
-                      Available: input, value, result, variables, abs, ceil, floor, round, sqrt, pow, min, max, sin, cos, tan, log, exp
+                      <strong>Math:</strong> abs, ceil, floor, round, sqrt, pow, min, max, sin, cos, tan, log, exp<br>
+                      <strong>Percent:</strong> percent(val, %), addPercent(val, %), subtractPercent(val, %), percentOf(part, whole), percentChange(old, new)
                     </div>
                   </div>
 
@@ -1123,6 +1124,12 @@ export default {
           tan: Math.tan,
           log: Math.log,
           exp: Math.exp,
+          // Percentage helper functions
+          percent: (val, percentage) => val * (percentage / 100),
+          addPercent: (val, percentage) => val + (val * percentage / 100),
+          subtractPercent: (val, percentage) => val - (val * percentage / 100),
+          percentOf: (part, whole) => (part / whole) * 100,
+          percentChange: (oldVal, newVal) => ((newVal - oldVal) / oldVal) * 100,
           // Input array for aggregate functions
           inputs: inputs.map(fromId => {
             const fromNode = this.nodes.find(n => n.id === fromId);
