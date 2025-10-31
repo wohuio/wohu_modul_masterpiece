@@ -68,6 +68,7 @@
           transform: `translate(${node.position.x}px, ${node.position.y}px)`,
         }"
         @mousedown="onNodeMouseDown($event, node)"
+        @dblclick.stop="openNodePopup(node)"
       >
         <!-- Node Content -->
         <div class="node-content">
@@ -238,6 +239,152 @@
         </div>
       </div>
     </div>
+
+    <!-- Node Details Popup -->
+    <div v-if="popupNode" class="node-popup-overlay" @click="closeNodePopup">
+      <div class="node-popup" @click.stop>
+        <div class="popup-header" :style="{ backgroundColor: popupNode.color || '#3b82f6' }">
+          <span class="popup-icon">{{ popupNode.icon }}</span>
+          <h3>{{ popupNode.label }}</h3>
+          <button class="popup-close" @click="closeNodePopup">×</button>
+        </div>
+
+        <div class="popup-body">
+          <div class="popup-section">
+            <h4>General</h4>
+
+            <div class="popup-field">
+              <label>Label</label>
+              <input
+                type="text"
+                v-model="popupNode.label"
+                @input="onPopupChange"
+                class="popup-input"
+              />
+            </div>
+
+            <div class="popup-field">
+              <label>Category</label>
+              <input
+                type="text"
+                v-model="popupNode.data.category"
+                @input="onPopupChange"
+                placeholder="e.g., Revenue, Cost, Tax"
+                class="popup-input"
+              />
+            </div>
+
+            <div class="popup-field">
+              <label>Unit</label>
+              <input
+                type="text"
+                v-model="popupNode.data.unit"
+                @input="onPopupChange"
+                placeholder="€, %, kg, etc."
+                class="popup-input"
+              />
+            </div>
+          </div>
+
+          <div class="popup-section">
+            <h4>Calculation</h4>
+
+            <div class="popup-field">
+              <label>Type</label>
+              <select
+                v-model="popupNode.data.calculationType"
+                @change="onPopupChange"
+                class="popup-select"
+              >
+                <option value="fixed">Fixed Value</option>
+                <option value="percentage">Percentage</option>
+                <option value="multiply">Multiply</option>
+                <option value="add">Add</option>
+                <option value="subtract">Subtract</option>
+                <option value="formula">Custom Formula</option>
+              </select>
+            </div>
+
+            <div v-if="popupNode.data.calculationType === 'formula'" class="popup-field">
+              <label>Formula</label>
+              <textarea
+                v-model="popupNode.data.formula"
+                @input="onPopupChange"
+                placeholder="input * value + 10"
+                class="popup-textarea"
+                rows="3"
+              ></textarea>
+            </div>
+
+            <div class="popup-field">
+              <label>Value</label>
+              <input
+                type="number"
+                v-model.number="popupNode.data.value"
+                @input="onPopupChange"
+                class="popup-input"
+              />
+            </div>
+
+            <div class="popup-field-group">
+              <div class="popup-field">
+                <label>Min Value</label>
+                <input
+                  type="number"
+                  v-model.number="popupNode.data.minValue"
+                  @input="onPopupChange"
+                  class="popup-input"
+                />
+              </div>
+              <div class="popup-field">
+                <label>Max Value</label>
+                <input
+                  type="number"
+                  v-model.number="popupNode.data.maxValue"
+                  @input="onPopupChange"
+                  class="popup-input"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div class="popup-section">
+            <h4>Documentation</h4>
+
+            <div class="popup-field">
+              <label>Description</label>
+              <textarea
+                v-model="popupNode.data.description"
+                @input="onPopupChange"
+                placeholder="Short description of this node"
+                class="popup-textarea"
+                rows="2"
+              ></textarea>
+            </div>
+
+            <div class="popup-field">
+              <label>Notes</label>
+              <textarea
+                v-model="popupNode.data.notes"
+                @input="onPopupChange"
+                placeholder="Additional notes, comments, or documentation"
+                class="popup-textarea"
+                rows="4"
+              ></textarea>
+            </div>
+          </div>
+
+          <div class="popup-result">
+            <label>Current Result</label>
+            <div class="result-value">{{ formatValue(popupNode.data.result || 0) }}</div>
+          </div>
+        </div>
+
+        <div class="popup-footer">
+          <button @click="closeNodePopup" class="btn-primary">Done</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -279,6 +426,7 @@ export default {
       // UI
       showNodeMenu: false,
       isLocked: false,
+      popupNode: null,
     };
   },
   computed: {
@@ -400,8 +548,11 @@ export default {
             calculationType: nodeType?.calculationType || 'fixed',
             formula: nodeType?.formula || 'input + value',
             description: nodeType?.description || '',
+            notes: nodeType?.notes || '',
             minValue: nodeType?.minValue,
             maxValue: nodeType?.maxValue,
+            unit: nodeType?.unit || '',
+            category: nodeType?.category || '',
           },
         };
       });
@@ -481,8 +632,11 @@ export default {
           calculationType: nodeType.calculationType || 'fixed',
           formula: nodeType.formula || 'input + value',
           description: nodeType.description || '',
+          notes: nodeType.notes || '',
           minValue: nodeType.minValue,
           maxValue: nodeType.maxValue,
+          unit: nodeType.unit || '',
+          category: nodeType.category || '',
         },
       };
 
@@ -823,6 +977,20 @@ export default {
 
     formatValue(val) {
       return typeof val === 'number' ? val.toFixed(2) : '0.00';
+    },
+
+    // === POPUP ===
+    openNodePopup(node) {
+      this.popupNode = node;
+    },
+
+    closeNodePopup() {
+      this.popupNode = null;
+    },
+
+    onPopupChange() {
+      this.calculate();
+      this.emitFlowData();
     },
   },
 };
@@ -1268,6 +1436,223 @@ export default {
         color: #6b7280;
       }
     }
+  }
+}
+
+// === POPUP MODAL ===
+.node-popup-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+.node-popup {
+  background: white;
+  border-radius: 16px;
+  width: 90%;
+  max-width: 600px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: popupSlideIn 0.3s ease-out;
+}
+
+@keyframes popupSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.popup-header {
+  padding: 20px 24px;
+  border-radius: 16px 16px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: white;
+  background: #3b82f6;
+
+  .popup-icon {
+    font-size: 28px;
+  }
+
+  h3 {
+    flex: 1;
+    margin: 0;
+    font-size: 20px;
+    font-weight: 700;
+  }
+
+  .popup-close {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    font-size: 28px;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+  }
+}
+
+.popup-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.popup-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #e5e7eb;
+
+  &:last-of-type {
+    border-bottom: none;
+  }
+
+  h4 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #6b7280;
+  }
+}
+
+.popup-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #374151;
+  }
+}
+
+.popup-field-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.popup-input,
+.popup-select,
+.popup-textarea {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #111827;
+  background: white;
+  transition: all 0.2s;
+
+  &:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+
+  &::placeholder {
+    color: #9ca3af;
+  }
+}
+
+.popup-textarea {
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.5;
+}
+
+.popup-select {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 36px;
+}
+
+.popup-result {
+  padding: 16px;
+  background: #f9fafb;
+  border-radius: 8px;
+  border-left: 4px solid #10b981;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #6b7280;
+  }
+
+  .result-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: #10b981;
+  }
+}
+
+.popup-footer {
+  padding: 16px 24px;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.btn-primary {
+  padding: 10px 24px;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  }
+
+  &:active {
+    transform: translateY(0);
   }
 }
 </style>
