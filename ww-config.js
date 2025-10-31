@@ -100,28 +100,74 @@ export default {
       },
       defaultValue: [
         {
-          id: "base",
-          label: "Base Value",
+          id: "basis",
+          label: "Basis-Preis",
           icon: "💰",
           color: "#10b981",
           calculationType: "fixed",
-          defaultValue: 100
+          defaultValue: 1000,
+          description: "Startpreis",
+          unit: "€",
+          category: "input"
         },
         {
-          id: "percentage",
-          label: "Percentage",
-          icon: "📊",
+          id: "rabatt",
+          label: "Rabatt",
+          icon: "🏷️",
+          color: "#ef4444",
+          calculationType: "formula",
+          formula: "input * (1 - value / 100)",
+          defaultValue: 10,
+          description: "Rabatt in Prozent",
+          unit: "%",
+          category: "calculation"
+        },
+        {
+          id: "steuer",
+          label: "MwSt",
+          icon: "🏛️",
           color: "#3b82f6",
-          calculationType: "percentage",
-          defaultValue: 10
+          calculationType: "formula",
+          formula: "input * (1 + value / 100)",
+          defaultValue: 19,
+          description: "Mehrwertsteuer",
+          unit: "%",
+          category: "calculation"
         },
         {
-          id: "multiplier",
-          label: "Multiplier",
-          icon: "✖️",
+          id: "versand",
+          label: "Versand",
+          icon: "🚚",
+          color: "#f59e0b",
+          calculationType: "formula",
+          formula: "input + value",
+          defaultValue: 5.99,
+          description: "Versandkosten",
+          unit: "€",
+          category: "calculation"
+        },
+        {
+          id: "provision",
+          label: "Provision",
+          icon: "💳",
           color: "#8b5cf6",
-          calculationType: "multiply",
-          defaultValue: 1.5
+          calculationType: "formula",
+          formula: "input * (value / 100)",
+          defaultValue: 3.5,
+          description: "Payment Fee",
+          unit: "%",
+          category: "calculation"
+        },
+        {
+          id: "gesamt",
+          label: "Gesamt",
+          icon: "✅",
+          color: "#059669",
+          calculationType: "fixed",
+          defaultValue: 0,
+          description: "Endpreis",
+          unit: "€",
+          category: "result"
         }
       ],
       bindable: true,
