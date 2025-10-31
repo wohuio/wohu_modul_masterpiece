@@ -54,7 +54,7 @@
         <!-- Edges -->
         <g class="edges-layer">
           <g v-for="edge in edges" :key="`${edge.source}-${edge.target}`">
-            <!-- First half (source to midpoint) -->
+            <!-- Full path line -->
             <path
               :d="getEdgePath(edge)"
               :stroke="content.connectionColor || '#b1b1b7'"
@@ -64,14 +64,11 @@
               @click="onEdgeClick(edge)"
               style="cursor: pointer;"
             />
-            <!-- Second half (midpoint to target) with arrow -->
+            <!-- Arrow marker at midpoint -->
             <path
-              :d="getEdgePathSecondHalf(edge)"
-              :stroke="content.connectionColor || '#b1b1b7'"
-              :stroke-width="content.connectionWidth || 2"
-              fill="none"
-              class="react-flow-edge"
-              marker-end="url(#arrowhead)"
+              :d="getArrowPath(edge)"
+              :fill="content.connectionColor || '#b1b1b7'"
+              class="edge-arrow"
               @click="onEdgeClick(edge)"
               style="cursor: pointer;"
             />
@@ -1037,22 +1034,11 @@ export default {
       const dy = targetY - sourceY;
       const offset = Math.abs(dx) * 0.5;
 
-      // Calculate midpoint for arrow placement (t=0.5 on cubic bezier)
-      const cp1x = sourceX + offset;
-      const cp1y = sourceY;
-      const cp2x = targetX - offset;
-      const cp2y = targetY;
-
-      // Cubic bezier at t=0.5
-      const t = 0.5;
-      const midX = Math.pow(1-t, 3) * sourceX + 3 * Math.pow(1-t, 2) * t * cp1x + 3 * (1-t) * Math.pow(t, 2) * cp2x + Math.pow(t, 3) * targetX;
-      const midY = Math.pow(1-t, 3) * sourceY + 3 * Math.pow(1-t, 2) * t * cp1y + 3 * (1-t) * Math.pow(t, 2) * cp2y + Math.pow(t, 3) * targetY;
-
-      // Split path at midpoint
-      return `M ${sourceX} ${sourceY} C ${sourceX + offset} ${sourceY}, ${targetX - offset} ${targetY}, ${midX} ${midY}`;
+      // Full bezier curve path
+      return `M ${sourceX} ${sourceY} C ${sourceX + offset} ${sourceY}, ${targetX - offset} ${targetY}, ${targetX} ${targetY}`;
     },
 
-    getEdgePathSecondHalf(edge) {
+    getArrowPath(edge) {
       const sourceNode = this.nodes.find(n => n.id === edge.source);
       const targetNode = this.nodes.find(n => n.id === edge.target);
 
@@ -1067,7 +1053,7 @@ export default {
       const dx = targetX - sourceX;
       const offset = Math.abs(dx) * 0.5;
 
-      // Calculate midpoint
+      // Calculate midpoint on cubic bezier curve (t=0.5)
       const cp1x = sourceX + offset;
       const cp1y = sourceY;
       const cp2x = targetX - offset;
@@ -1077,8 +1063,25 @@ export default {
       const midX = Math.pow(1-t, 3) * sourceX + 3 * Math.pow(1-t, 2) * t * cp1x + 3 * (1-t) * Math.pow(t, 2) * cp2x + Math.pow(t, 3) * targetX;
       const midY = Math.pow(1-t, 3) * sourceY + 3 * Math.pow(1-t, 2) * t * cp1y + 3 * (1-t) * Math.pow(t, 2) * cp2y + Math.pow(t, 3) * targetY;
 
-      // Second half from midpoint to target
-      return `M ${midX} ${midY} C ${targetX - offset} ${targetY}, ${targetX - offset} ${targetY}, ${targetX} ${targetY}`;
+      // Calculate tangent angle at midpoint for arrow rotation
+      // Derivative of cubic bezier at t=0.5
+      const dx_dt = -3 * Math.pow(1-t, 2) * sourceX + 3 * (Math.pow(1-t, 2) - 2*t*(1-t)) * cp1x + 3 * (2*t*(1-t) - Math.pow(t, 2)) * cp2x + 3 * Math.pow(t, 2) * targetX;
+      const dy_dt = -3 * Math.pow(1-t, 2) * sourceY + 3 * (Math.pow(1-t, 2) - 2*t*(1-t)) * cp1y + 3 * (2*t*(1-t) - Math.pow(t, 2)) * cp2y + 3 * Math.pow(t, 2) * targetY;
+      const angle = Math.atan2(dy_dt, dx_dt);
+
+      // Arrow size
+      const arrowSize = 9;
+      const arrowWidth = 6;
+
+      // Calculate arrow points
+      const tipX = midX;
+      const tipY = midY;
+      const baseLeftX = tipX - arrowSize * Math.cos(angle) - arrowWidth/2 * Math.sin(angle);
+      const baseLeftY = tipY - arrowSize * Math.sin(angle) + arrowWidth/2 * Math.cos(angle);
+      const baseRightX = tipX - arrowSize * Math.cos(angle) + arrowWidth/2 * Math.sin(angle);
+      const baseRightY = tipY - arrowSize * Math.sin(angle) - arrowWidth/2 * Math.cos(angle);
+
+      return `M ${tipX} ${tipY} L ${baseLeftX} ${baseLeftY} L ${baseRightX} ${baseRightY} Z`;
     },
 
     getTempConnectionPath() {
